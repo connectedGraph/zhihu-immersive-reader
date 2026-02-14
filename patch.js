@@ -1,0 +1,211 @@
+(function() {
+    // 防抖与初始化
+    if (window._hasZhihuImmersiveSetup) return;
+    window._hasZhihuImmersiveSetup = true;
+    window._isImmersive = false; 
+
+    // 全局死死捏住核心节点的引用
+    let _articleNode = null;
+    let _actionBarNode = null;
+
+    window.toggleImmersiveMode = function() {
+        if (window._isImmersive) {
+            exitImmersive();
+        } else {
+            enterImmersive();
+        }
+    };
+
+    // ==========================================
+    // 【展卷】进入沉浸模式
+    // ==========================================
+    function enterImmersive() {
+        _articleNode = document.querySelector('.Post-Main.Post-NormalMain') || document.querySelector('.Post-Main') || document.querySelector('.AnswerItem');
+        if (!_articleNode) {
+            alert('阁下，未寻得文章主体！');
+            return;
+        }
+
+        // 1. 给文章原地埋下 GPS 占位符
+        const articlePlaceholder = document.createElement('span');
+        articlePlaceholder.id = 'zh-article-placeholder';
+        articlePlaceholder.style.display = 'none';
+        _articleNode.parentNode.insertBefore(articlePlaceholder, _articleNode);
+
+        // 2. 获取并锁定操作栏，埋占位符
+        _actionBarNode = _articleNode.querySelector('.ContentItem-actions') || document.querySelector('.ContentItem-actions');
+        if (_actionBarNode) {
+            const actionPlaceholder = document.createElement('span');
+            actionPlaceholder.id = 'zh-action-placeholder';
+            actionPlaceholder.style.display = 'none';
+            _actionBarNode.parentNode.insertBefore(actionPlaceholder, _actionBarNode);
+            
+            _actionBarNode.dataset.origCssText = _actionBarNode.style.cssText;
+            _actionBarNode.style.cssText = 'position: static !important; box-shadow: none !important; background: transparent !important; margin-top: 40px !important;';
+        }
+
+        // 3. 【核心修正】抢救目录按钮，但不移动它的 DOM 层级，只加 CSS 类！
+        // 这样它的 onClick 事件绝不会失效！
+        const tocNode = _articleNode.querySelector('.css-u56wtg') || document.querySelector('.CatalogBtn') || document.querySelector('[aria-label="目录"]');
+        if (tocNode) {
+            tocNode.classList.add('zh-toc-fixed-style');
+        }
+
+        // --- 清理垃圾（腰斩尾部与文中广告） ---
+        const timeNode = _articleNode.querySelector('.ContentItem-time') || _articleNode.querySelector('.Post-Sub');
+        if (timeNode) {
+            let currentNode = timeNode.nextElementSibling;
+            while (currentNode) {
+                const nextNode = currentNode.nextElementSibling;
+                if (currentNode.id !== 'zh-action-placeholder' && !currentNode.classList.contains('ContentItem-actions')) {
+                    currentNode.remove();
+                }
+                currentNode = nextNode;
+            }
+        }
+
+        ['.pc-article-answer-text-chain', '.pc-article-answer-big-img', '.RichText-MCNLinkCardContainer', '.ecommerce-ad-box', '.MCNLinkCard', '.RichText-ADLinkCardContainer'].forEach(selector => {
+            _articleNode.querySelectorAll(selector).forEach(ad => ad.remove());
+        });
+
+        // --- 障眼法：隐藏原有生态 ---
+        Array.from(document.body.children).forEach(child => {
+            if (child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE' && child.tagName !== 'LINK') {
+                child.dataset.origDisplay = child.style.display;
+                child.style.display = 'none';
+                child.classList.add('zh-hidden-by-immersive'); 
+            }
+        });
+
+        // --- 铺垫宣纸与样式 ---
+        const style = document.createElement('style');
+        style.id = 'xuanzhi-style';
+        style.innerHTML = `
+            /* 背景柔化 */
+            body { background-color: #E5DEC9 !important; margin: 0; padding: 50px 0; font-family: 'Times New Roman', 'KaiTi', 'STKaiti', 'FangSong', 'Noto Serif SC', 'Source Han Serif SC', serif !important; }
+            
+            #xuanzhi-wrapper { max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: #F8F4E6; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" opacity="0.04"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch"/></filter><rect width="200" height="200" filter="url(%23noise)"/></svg>'); border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.1); color: #2b2b2b; line-height: 2.2; font-size: 18px; border-left: 2px solid #8B2626; border-right: 1px solid #d4cbb8; display: block !important; }
+            
+            #xuanzhi-wrapper h1, #xuanzhi-wrapper h2, #xuanzhi-wrapper h3 { font-weight: bold; color: #1a1a1a; border-bottom: 1px dashed #b5a999; padding-bottom: 12px; margin-top: 1.5em; }
+            #xuanzhi-wrapper blockquote { border-left: 4px solid #8B2626 !important; background: #f0ebe1 !important; color: #555 !important; padding: 15px 20px !important; margin: 20px 0 !important; }
+            #xuanzhi-wrapper a { color: #8B2626 !important; text-decoration: none !important; border-bottom: 1px solid #8B2626; padding-bottom: 1px; }
+            #xuanzhi-wrapper pre, #xuanzhi-wrapper code { background-color: #eae5d9 !important; font-family: Consolas, Monaco, monospace !important; font-size: 0.9em; }
+            #xuanzhi-wrapper img { border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            .ContentItem-actions { border-top: 1px dashed #b5a999 !important; padding-top: 20px !important; }
+            
+            /* 公式 */
+            .ztext-math, .katex, .katex * { font-family: KaTeX_Main, KaTeX_Math, "Times New Roman", serif !important; line-height: normal !important; font-style: normal !important; }
+            .MathJax_SVG_Display { margin: 1em 0 !important; }
+            .MathJax_SVG svg { display: inline-block !important; vertical-align: middle !important; fill: currentColor !important; }
+            
+            /* --- 退出按钮：左下角固定 --- */
+            #xuanzhi-exit-btn { position: fixed !important; bottom: 30px !important; left: 30px !important; padding: 8px 16px !important; background-color: #F8F4E6 !important; color: #8B2626 !important; border: 1px solid #8B2626 !important; border-radius: 4px !important; font-family: 'KaiTi', 'STKaiti', serif !important; font-size: 16px !important; cursor: pointer !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important; z-index: 999999 !important; transition: all 0.3s ease !important; letter-spacing: 2px !important; }
+            #xuanzhi-exit-btn:hover { background-color: #8B2626 !important; color: #F8F4E6 !important; }
+
+            /* --- 【修正】目录按钮：右上角绝对固定，方形微圆角，绝不畸形 --- */
+            .zh-toc-fixed-style { 
+                position: fixed !important; 
+                top: 30px !important;    /* 移至右上角 */
+                right: 30px !important; 
+                z-index: 999999 !important; 
+                background-color: #F8F4E6 !important; 
+                border: 1px solid #8B2626 !important; 
+                border-radius: 4px !important; /* 修正：方形微圆角，告别丑陋椭圆 */
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important; 
+                padding: 8px 12px !important; 
+                display: flex !important; 
+                align-items: center !important; 
+                justify-content: center !important; 
+                transition: all 0.3s ease !important; 
+                color: #8B2626 !important; 
+                width: auto !important; 
+                height: auto !important;
+                cursor: pointer !important;
+            }
+            .zh-toc-fixed-style svg { fill: currentColor !important; width: 20px !important; height: 20px !important; }
+            .zh-toc-fixed-style:hover { background-color: #8B2626 !important; color: #F8F4E6 !important; }
+        `;
+        document.head.appendChild(style);
+
+        // 4. 装载 主体 DOM
+        const wrapper = document.createElement('div');
+        wrapper.id = 'xuanzhi-wrapper';
+        wrapper.appendChild(_articleNode);
+        if (_actionBarNode) wrapper.appendChild(_actionBarNode);
+        document.body.appendChild(wrapper);
+
+        // 5. 创建退出按钮
+        const exitBtn = document.createElement('button');
+        exitBtn.id = 'xuanzhi-exit-btn';
+        exitBtn.innerText = '退出沉浸';
+        exitBtn.title = '快捷键：Ctrl + E';
+        exitBtn.onclick = toggleImmersiveMode;
+        document.body.appendChild(exitBtn);
+
+        // 6. 唤醒懒加载图片
+        document.querySelectorAll('#xuanzhi-wrapper img').forEach(img => {
+            const realSrc = img.getAttribute('data-original') || img.getAttribute('data-actualsrc');
+            if (realSrc) img.src = realSrc;
+        });
+
+        window._isImmersive = true;
+        console.log('📜 展卷：已进入沉浸模式');
+    }
+
+    // ==========================================
+    // 【收卷】退出沉浸模式
+    // ==========================================
+    function exitImmersive() {
+        // 1. 褪去目录按钮的古风外套（恢复原状）
+        const tocNode = document.querySelector('.zh-toc-fixed-style');
+        if (tocNode) {
+            tocNode.classList.remove('zh-toc-fixed-style');
+        }
+
+        // 2. 完璧归赵：护送文章
+        const articlePlaceholder = document.getElementById('zh-article-placeholder');
+        if (_articleNode && articlePlaceholder) {
+            articlePlaceholder.parentNode.insertBefore(_articleNode, articlePlaceholder); 
+            articlePlaceholder.remove();
+        }
+
+        // 3. 完璧归赵：护送操作栏
+        const actionPlaceholder = document.getElementById('zh-action-placeholder');
+        if (_actionBarNode && actionPlaceholder) {
+            _actionBarNode.style.cssText = _actionBarNode.dataset.origCssText || '';
+            actionPlaceholder.parentNode.insertBefore(_actionBarNode, actionPlaceholder);
+            actionPlaceholder.remove();
+        }
+
+        // 4. 拆除宣纸和辅助元素
+        const wrapper = document.getElementById('xuanzhi-wrapper');
+        const exitBtn = document.getElementById('xuanzhi-exit-btn');
+        const style = document.getElementById('xuanzhi-style');
+        if (wrapper) wrapper.remove();
+        if (exitBtn) exitBtn.remove();
+        if (style) style.remove();
+
+        // 5. 撤销障眼法
+        document.querySelectorAll('.zh-hidden-by-immersive').forEach(child => {
+            child.style.display = child.dataset.origDisplay || '';
+            child.classList.remove('zh-hidden-by-immersive');
+        });
+
+        window._isImmersive = false;
+        console.log('📜 收卷：已退出沉浸模式，精准恢复原貌！');
+    }
+
+    // ==========================================
+    // 全局快捷键监听（完美拦截 Ctrl+E / Cmd+E）
+    // ==========================================
+    window.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+            e.preventDefault(); 
+            window.toggleImmersiveMode();
+        }
+    });
+
+    // 首次载入时，默认展卷
+    window.toggleImmersiveMode();
+
+})();
