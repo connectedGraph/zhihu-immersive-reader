@@ -1,5 +1,6 @@
-# 📜 知乎沉浸阅读脚本 (Zhihu Immersive Reader)
 
+# 📜 知乎沉浸阅读脚本 (Zhihu Immersive Reader)
+[点击安装脚本](https://greasyfork.org/zh-CN/scripts/573678)
 ## 📖 简介
 
 > “一叶孤舟，一卷宣纸”。
