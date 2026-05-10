@@ -1,4 +1,4 @@
-# 📜 知乎沉浸阅读脚本
+# 📜 沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 
 
 [![Install](https://img.shields.io/badge/安装-最新版本-brightgreen.svg)](https://greasyfork.org/zh-CN/scripts/573678)
