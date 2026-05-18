@@ -1,0 +1,6167 @@
+// ==UserScript==
+// @name         知乎沉浸式翻译(API配置组-雷达进度修复版)
+// @namespace    https://github.com/connectedGraph
+// @version      1.20.0
+// @description  知乎通用沉浸式阅读+AI翻译 | API配置组 + 雷达进度保留 + Wiki配置快照 + 零损分享
+// @author       Rap
+// @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
+// @supportURL   https://github.com/connectedGraph/zhihu-immersive-reader/issues
+// @match        *://zhihu.com/
+// @match        *://www.zhihu.com/
+// @match        *://*.zhihu.com/question/*
+// @match        *://zhuanlan.zhihu.com/p/*
+// @match        *://*.zhuanlan.zhihu.com/p/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
+// @connect      api.deepseek.com
+// @connect      zhihu.com
+// @connect      www.zhihu.com
+// @connect      zhuanlan.zhihu.com
+// @connect      *.zhihu.com
+// @connect      *
+// ==/UserScript==
+
+/**
+ * ============================================================================
+ * 常量定义区：所有的样式、HTML模板、默认配置均提取于此，便于维护
+ * ============================================================================
+ */
+
+// ----- 主题样式变量（CSS自定义属性） -----
+const THEMES = [
+    { name: '📜 宣纸', vars: { '--zh-bg': '#E5DEC9', '--zh-paper': '#F8F4E6', '--zh-text': '#2b2b2b', '--zh-title': '#1a1a1a', '--zh-accent': '#8B2626', '--zh-border': '#d4cbb8', '--zh-quote': '#f0ebe1', '--zh-code': '#eae5d9', '--zh-modal-bg': '#F8F4E6' } },
+    { name: '🎋 竹简', vars: { '--zh-bg': '#C3D0B9', '--zh-paper': '#E2EFE1', '--zh-text': '#2C3E2E', '--zh-title': '#1B2A1E', '--zh-accent': '#4A704A', '--zh-border': '#B7C9B9', '--zh-quote': '#D5E5D5', '--zh-code': '#CFDFCF', '--zh-modal-bg': '#E2EFE1' } },
+    { name: '🧳 牛皮', vars: { '--zh-bg': '#D4B895', '--zh-paper': '#E8D5B7', '--zh-text': '#4A3625', '--zh-title': '#2E1F12', '--zh-accent': '#7A5230', '--zh-border': '#C2A882', '--zh-quote': '#DCC5A3', '--zh-code': '#D1B994', '--zh-modal-bg': '#E8D5B7' } },
+    { name: '🧛 暗血', vars: { '--zh-bg': '#121212', '--zh-paper': '#1E1E1E', '--zh-text': '#A3A3A3', '--zh-title': '#CCCCCC', '--zh-accent': '#8A1F1F', '--zh-border': '#333333', '--zh-quote': '#252525', '--zh-code': '#1A1A1A', '--zh-modal-bg': '#2A2A2A' } },
+    { name: '⚪ 简白', vars: { '--zh-bg': '#F5F5F5', '--zh-paper': '#FFFFFF', '--zh-text': '#333333', '--zh-title': '#000000','--zh-accent':'#0066CC','--zh-border':'#E0E0E0','--zh-quote':'#F8F8F8','--zh-code':'#F5F5F5','--zh-modal-bg':'#FFFFFF'}}
+];
+
+// ----- 默认配置 -----
+const DEFAULT_CONFIG = {
+    apiHost: 'https://api.deepseek.com/v1',
+    apiKey: '',
+    apiModel: 'deepseek-chat',
+    targetLang: 'English',
+    radarInterestTags: 'AI工具、提示词工程、LLM训练、GitHub精选',
+    autoSum: false,
+    autoTr: false,
+    autoHideImages: false,
+    shareExportFormat: 'svg',
+    answerPreviewMode: 'excerpt',
+    wikiMaxItems: 100,
+    wikiConcurrency: 20,
+    wikiRpm: 300,
+    wikiFinalSynthesis: true
+};
+
+const EXPORT_HIDDEN_SELECTORS = [
+    '.AppHeader',
+    '.GlobalSideBar',
+    '.CornerButtons',
+    '#zh-tools-panel',
+    '#immersive-exit-btn',
+    '.zh-modal-overlay',
+    '.CatalogBtn',
+    '[aria-label="目录"]',
+    '.css-u56wtg',
+    '.FollowButton',
+    '.Reward',
+    '.Button',
+    '.Popover',
+    '.ContentItem-more',
+    '.RichContent-collapsedText',
+    '.zh-export-hidden',
+    '.zh-tr-actions',
+    '.zh-tr-regen-btn',
+    '.zh-question-toolbar',
+    '.zh-home-toolbar',
+    '.zh-reader-top-nav',
+    '.zh-wiki-actions',
+    '.zh-wiki-history-actions',
+    '.zh-radar-actions',
+    '.zh-radar-generate-btn',
+    '.pc-article-answer-text-chain',
+    '.pc-article-answer:has(.pc-article-answer-card)',
+    '.ecommerce-ad-box',
+    '.MCNLinkCard',
+    '.zh-hidden-by-immersive-inner',
+    '.zh-hidden-by-immersive'
+];
+
+// ----- 核心样式 (动态注入的 <style> 内容) -----
+const STYLE_CSS = `
+    body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: 'Times New Roman', 'KaiTi', 'STKaiti', serif !important; transition: background-color 0.5s ease !important; }
+    #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; transition: all 0.5s ease !important; }
+    #immersive-wrapper h1, #immersive-wrapper h2, #immersive-wrapper h3 { font-weight: bold; color: var(--zh-title) !important; border-bottom: 1px dashed var(--zh-border) !important; padding-bottom: 12px; margin-top: 1.5em; }
+    #immersive-wrapper blockquote { border-left: 4px solid var(--zh-accent) !important; background: var(--zh-quote) !important; color: var(--zh-text) !important; padding: 15px 20px !important; margin: 20px 0 !important; }
+    #immersive-wrapper a { color: var(--zh-accent) !important; text-decoration: none !important; border-bottom: 1px solid var(--zh-accent) !important; }
+    #immersive-wrapper pre {background-color: var(--zh-code) !important;font-family: Consolas, monospace !important;font-size: inherit !important;padding: 1em 1.2em !important;border-radius: 6px !important;overflow-x: auto !important;line-height: 1.5 !important;}#immersive-wrapper pre code {background-color: transparent !important;padding: 0 !important;font-family: inherit !important;font-size: inherit !important;}#immersive-wrapper code:not(pre code) {background-color: var(--zh-code) !important;font-family: Consolas, monospace !important;font-size: inherit !important;padding: 0.2em 0.4em !important;border-radius: 3px !important;}
+    #immersive-wrapper img { border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 100%; height: auto; cursor: zoom-out; }
+    #immersive-wrapper img.zh-img-hidden { display: none !important; }
+    .zh-img-placeholder { min-height: 44px; margin: 12px 0; padding: 10px 14px; border: 1px dashed var(--zh-border); border-radius: 4px; background: var(--zh-quote); color: var(--zh-text); display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0.82; font-size: 0.9em; transition: all 0.2s ease; }
+    .zh-img-placeholder:hover { border-color: var(--zh-accent); color: var(--zh-accent); opacity: 1; }
+    .zh-context-menu { position: fixed; min-width: 150px; padding: 6px; background: var(--zh-modal-bg); border: 1px solid var(--zh-accent); border-radius: 4px; color: var(--zh-text); box-shadow: 0 8px 24px rgba(0,0,0,0.22); z-index: 99999999; font-family: 'KaiTi', serif; font-size: 15px; }
+    .zh-context-menu-item { padding: 8px 12px; border-radius: 3px; cursor: pointer; user-select: none; white-space: nowrap; }
+    .zh-context-menu-item:hover { background: var(--zh-accent); color: var(--zh-paper); }
+    .zh-question-title { margin: 0 0 18px !important; padding-bottom: 16px !important; border-bottom: 2px solid var(--zh-accent) !important; font-size: 30px !important; line-height: 1.45 !important; letter-spacing: 0 !important; }
+    .zh-question-detail { margin: 0 0 30px; border: 1px dashed var(--zh-border); background: var(--zh-quote); border-radius: 4px; padding: 0 16px; }
+    .zh-question-detail summary { cursor: pointer; color: var(--zh-accent); font-weight: bold; padding: 12px 0; }
+    .zh-question-detail-body { padding: 0 0 16px; }
+    .zh-question-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 28px; }
+    .zh-reader-top-nav { position: absolute; top: 18px; right: 18px; z-index: 3; max-width: 270px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin: 0 !important; padding: 6px 7px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); box-shadow: 0 4px 14px rgba(0,0,0,0.08); font-size: 12px; line-height: 1.2; opacity: 0.94; }
+    .zh-reader-top-nav .zh-inline-btn { padding: 4px 7px; font-size: 12px; line-height: 1.2; }
+    .zh-reader-top-nav .zh-nav-current { display: inline-flex; align-items: center; color: var(--zh-accent); font-weight: bold; padding: 4px 2px; white-space: nowrap; }
+    .zh-has-top-nav .zh-question-title, .zh-has-top-nav .zh-home-title { padding-right: 290px !important; }
+    .zh-inline-btn { padding: 8px 12px; border: 1px solid var(--zh-accent); border-radius: 4px; background: var(--zh-paper); color: var(--zh-accent); cursor: pointer; font-family: inherit; font-size: 15px; }
+    .zh-inline-btn:hover { background: var(--zh-accent); color: var(--zh-paper); }
+    .zh-collect-status { margin: 24px 0; padding: 14px 18px; border-left: 4px solid var(--zh-accent); background: var(--zh-quote); color: var(--zh-text); }
+    .zh-answer-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+    .zh-answer-list-item { border: 1px solid var(--zh-border); border-radius: 4px; padding: 14px 16px; background: rgba(255,255,255,0.18); cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease; }
+    .zh-answer-list-item:hover { border-color: var(--zh-accent); transform: translateY(-1px); }
+    .zh-answer-list-meta { color: var(--zh-accent); font-size: 0.9em; margin-bottom: 6px; }
+    .zh-answer-list-snippet { line-height: 1.7; }
+    .zh-home-title { margin: 0 0 18px !important; padding-bottom: 16px !important; border-bottom: 2px solid var(--zh-accent) !important; font-size: 30px !important; line-height: 1.45 !important; letter-spacing: 0 !important; }
+    .zh-wiki-progress { margin: 20px 0; padding: 14px 18px; border-left: 4px solid var(--zh-accent); background: var(--zh-quote); color: var(--zh-text); line-height: 1.8; }
+    .zh-wiki-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 20px; }
+    .zh-wiki-output { white-space: pre-wrap; word-break: break-word; font-family: Consolas, 'Microsoft YaHei', monospace; font-size: 14px; line-height: 1.75; background: var(--zh-code); border: 1px solid var(--zh-border); border-radius: 4px; padding: 16px; max-height: 70vh; overflow: auto; }
+    .zh-wiki-history { margin: 18px 0; border-top: 1px dashed var(--zh-border); padding-top: 16px; }
+    .zh-wiki-history h3 { margin: 0 0 12px !important; font-size: 18px !important; }
+    .zh-wiki-history-list { display: flex; flex-direction: column; gap: 10px; }
+    .zh-wiki-history-item { border: 1px solid var(--zh-border); background: var(--zh-quote); border-radius: 4px; padding: 12px 14px; line-height: 1.7; }
+    .zh-wiki-history-main { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+    .zh-wiki-history-title { font-weight: bold; color: var(--zh-title); }
+    .zh-wiki-history-meta { font-size: 13px; opacity: 0.78; }
+    .zh-wiki-history-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .zh-wiki-log { max-height: 240px; overflow: auto; background: var(--zh-code); border: 1px solid var(--zh-border); border-radius: 4px; padding: 10px 12px; margin-top: 10px; font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .zh-question-answer-view .Reward, .zh-question-answer-view .FollowButton { display: none !important; }
+    .zh-question-answer-view .RichContent { line-height: inherit !important; }
+    #immersive-wrapper img.Avatar, #immersive-wrapper .Avatar img, #immersive-wrapper .AuthorInfo-avatarWrapper img, #immersive-wrapper .zh-answer-list-meta img { width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important; max-width: 36px !important; max-height: 36px !important; aspect-ratio: 1 / 1 !important; object-fit: cover !important; border-radius: 5px !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; }
+    #immersive-wrapper .AuthorInfo img.Avatar, #immersive-wrapper .AuthorInfo .Avatar img, #immersive-wrapper .AnswerItem-authorInfo img.Avatar, #immersive-wrapper .AnswerItem-authorInfo .Avatar img { width: 40px !important; height: 40px !important; min-width: 40px !important; min-height: 40px !important; max-width: 40px !important; max-height: 40px !important; flex-basis: 40px !important; }
+    #immersive-wrapper .zh-answer-list-meta img, #immersive-wrapper .Comments-container img.Avatar, #immersive-wrapper .Comments-container .Avatar img, #immersive-wrapper .Comments-container .Avatar { width: 32px !important; height: 32px !important; min-width: 32px !important; min-height: 32px !important; max-width: 32px !important; max-height: 32px !important; aspect-ratio: 1 / 1 !important; object-fit: cover !important; border-radius: 5px !important; flex: 0 0 32px !important; align-self: flex-start !important; }
+    .ContentItem-actions { border-top: 1px dashed var(--zh-border) !important; padding-top: 20px !important; }
+    #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    
+    @keyframes zh-spin { 100% { transform: rotate(360deg); } }
+    .zh-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--zh-accent); border-top-color: transparent; border-radius: 50%; animation: zh-spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }
+
+    /* 修复1：补全隐藏 UI 时的样式 */
+    .zh-ui-hidden #immersive-exit-btn, .zh-ui-hidden #zh-tools-panel { display: none !important; }
+
+    /* 修复2：让翻译卡片独立出来，默认隐藏 */
+    .zh-tr-card { display: none !important; margin: 10px 0 25px 20px; padding: 12px 18px; background-color: var(--zh-quote); border-left: 3px dashed var(--zh-accent); border-radius: 4px; font-size: 0.95em; color: var(--zh-text); transition: all 0.3s; }
+    .zh-tr-actions { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--zh-border); display: flex; justify-content: flex-end; gap: 8px; }
+    .zh-tr-regen-btn { width: 28px; height: 26px; border: 1px solid var(--zh-border); border-radius: 4px; background: transparent; color: var(--zh-accent); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+    .zh-tr-regen-btn svg { width: 15px; height: 15px; fill: currentColor; }
+    .zh-tr-regen-btn:hover { background: var(--zh-accent); color: var(--zh-paper); }
+    
+    /* 配合 JS 显示翻译卡片 */
+    .zh-show-tr .zh-tr-card { display: block !important; animation: zhFadeIn 0.5s; }
+    
+    .zh-show-tr .zh-tr-card { display: block; animation: zhFadeIn 0.5s; }
+    .zh-summary-card { margin-left: 0; margin-bottom: 30px; border-left: 4px solid var(--zh-accent); font-weight: 500; }
+    @keyframes zhFadeIn { from {opacity: 0; transform: translateY(-5px);} to {opacity: 1; transform: translateY(0);} }
+
+    #zh-tools-panel { position: fixed !important; bottom: 30px !important; right: 30px !important; display: flex; flex-direction: column; gap: 10px; z-index: 999999 !important; transition: opacity 0.3s; }
+    .zh-square-btn { width: 38px !important; height: 38px !important; background-color: var(--zh-paper) !important; border: 1px solid var(--zh-accent) !important; border-radius: 4px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important; display: flex !important; align-items: center !important; justify-content: center !important; color: var(--zh-accent) !important; cursor: pointer !important; transition: all 0.2s ease !important; padding: 0 !important; margin: 0 !important; }
+    .zh-square-btn:hover { background-color: var(--zh-accent) !important; color: var(--zh-paper) !important; }
+    .zh-square-btn svg { fill: currentColor !important; width: 20px !important; height: 20px !important; }
+    .zh-btn-active { background-color: var(--zh-accent) !important; color: var(--zh-paper) !important; }
+
+    .zh-modal-btn { width: 100% !important; padding: 10px 15px !important; background-color: var(--zh-paper) !important; border: 1px solid var(--zh-accent) !important; border-radius: 4px !important; color: var(--zh-accent) !important; font-family: 'KaiTi', serif !important; font-size: 16px !important; font-weight: bold !important; cursor: pointer !important; transition: all 0.3s ease !important; letter-spacing: 2px !important; text-align: center !important; }
+    .zh-modal-btn:hover { background-color: var(--zh-accent) !important; color: var(--zh-paper) !important; }
+    
+    .zh-test-btn { width: 100%; padding: 8px; background: transparent; border: 1px dashed var(--zh-border); color: var(--zh-text); border-radius: 4px; cursor: pointer; margin-bottom: 10px; font-family: inherit; transition: all 0.2s; }
+    .zh-test-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    .zh-test-res { font-size: 0.85em; margin-bottom: 15px; display: none; padding: 5px; border-radius: 3px; background: var(--zh-code); }
+
+    .zh-pwd-wrap { position: relative; display: flex; align-items: center; margin-bottom: 15px; }
+    .zh-pwd-wrap input { width: 100%; padding-right: 35px !important; margin-bottom: 0 !important; box-sizing: border-box; }
+    .zh-eye-icon { position: absolute; right: 8px; cursor: pointer; color: var(--zh-text); opacity: 0.5; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; }
+    .zh-eye-icon:hover { opacity: 1; color: var(--zh-accent); }
+    .zh-eye-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    #immersive-exit-btn { position: fixed !important; bottom: 30px !important; left: 30px !important; padding: 8px 16px !important; background-color: var(--zh-paper) !important; color: var(--zh-accent) !important; border: 1px solid var(--zh-accent) !important; border-radius: 4px !important; font-family: 'KaiTi', serif !important; cursor: pointer !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important; z-index: 999999 !important; transition: opacity 0.3s; }
+    .zh-toc-fixed-style {position: fixed !important;top: 30px !important;right: 30px !important;z-index: 999999 !important;width: auto !important;height: auto !important;min-height: 38px !important;min-width: 38px !important;background-color: var(--zh-paper) !important;border: 1px solid var(--zh-accent) !important;border-radius: 4px !important;box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15) !important;display: inline-flex !important;align-items: center !important;justify-content: center !important;color: var(--zh-accent) !important;cursor: pointer !important;transition: all 0.2s ease !important;padding: 0 12px !important;margin: 0 !important;opacity: 1 !important;pointer-events: auto !important;}.zh-toc-fixed-style:hover {background-color: var(--zh-accent) !important;color: var(--zh-paper) !important;}.zh-toc-fixed-style svg {fill: currentColor !important;width: 20px !important;height: 20px !important;margin: 0 4px !important;}.zh-toc-fixed-style span {line-height: 1 !important;white-space: nowrap !important;}.zh-toc-fixed-style.zh-btn-active {background-color: var(--zh-accent) !important;color: var(--zh-paper) !important;}    .zh-modal-overlay { position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999999; display: flex; justify-content: center; align-items: center; }
+    .zh-modal { background: var(--zh-modal-bg); border: 2px solid var(--zh-accent); border-radius: 6px; width: 420px; max-width: 90%; color: var(--zh-text); font-family: 'KaiTi', serif; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .zh-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px dashed var(--zh-accent); font-weight: bold; font-size: 1.1em; }
+    .zh-modal-close { background: transparent; border: none; color: var(--zh-accent); font-size: 24px; cursor: pointer; padding: 0; outline: none; }
+    .zh-modal-body { padding: 25px 20px; font-size: 0.95em; line-height: 1.8; max-height: 70vh; overflow-y: auto; }
+    .zh-modal-body input { background: var(--zh-code); border: 1px solid var(--zh-border); color: var(--zh-text); padding: 8px; border-radius: 4px; outline: none; }
+    .zh-modal-body input:focus { border-color: var(--zh-accent); }
+    
+    @media print {
+        @page {
+            size: A4 portrait;
+            margin: 0 !important;
+        }
+
+        html, body, * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        ${EXPORT_HIDDEN_SELECTORS.join(',\n        ')} {
+            display: none !important;
+        }
+
+        html, body {
+            background: var(--zh-bg, #ffffff) !important;
+            color: var(--zh-text, #1a1a1a) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: auto !important;
+            min-height: auto !important;
+            box-sizing: border-box !important;
+        }
+
+        body {
+            padding: 15mm !important;
+        }
+
+        #immersive-wrapper, .Post-Main, .AnswerItem, .RichText, .Post-RichTextContainer, .Question-mainColumn {
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            border-left: 0 !important;
+            border-right: 0 !important;
+        }
+
+        #immersive-wrapper, #immersive-wrapper * {
+            box-sizing: border-box !important;
+        }
+
+        p, .RichText p, .css-34mzkj, .zh-tr-card {
+            margin-top: 12pt !important;
+            margin-bottom: 12pt !important;
+            orphans: 2;
+            widows: 2;
+        }
+
+        pre, img, svg, .zh-tr-card, table, blockquote, .css-34mzkj {
+            page-break-inside: avoid !important;
+            break-inside: avoid-page !important;
+        }
+
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            background: var(--zh-paper, #ffffff) !important;
+        }
+
+        th, td {
+            border: 1px solid var(--zh-border, #dddddd) !important;
+            padding: 6pt 8pt !important;
+            background-color: var(--zh-paper, #ffffff) !important;
+            color: var(--zh-text, #1a1a1a) !important;
+        }
+
+        blockquote, .zh-tr-card {
+            background: var(--zh-quote, #f8f8f8) !important;
+        }
+
+        .ContentItem-actions {
+            position: static !important;
+            bottom: auto !important;
+            box-shadow: none !important;
+            margin-top: 20px !important;
+            background: transparent !important;
+        }
+
+        pre {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            overflow: visible !important;
+        }
+
+        img {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+    }
+    @media (max-width: 860px) {
+        .zh-reader-top-nav { position: static; max-width: none; justify-content: flex-start; margin: 8px 0 18px !important; }
+        .zh-has-top-nav .zh-question-title, .zh-has-top-nav .zh-home-title { padding-right: 0 !important; }
+    }
+        
+        
+`;
+
+// ----- UI组件的HTML模板 (用于模态框等) -----
+const SETTINGS_MODAL_HTML = (cfg) => `
+    <label style="display:block; margin-bottom:5px;">API Host (记得带 /v1):</label>
+    <input type="text" id="zh-cfg-host" value="${cfg.apiHost}" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
+    
+    <label style="display:block; margin-bottom:5px;">模型名称 (Model):</label>
+    <input type="text" id="zh-cfg-model" value="${cfg.apiModel}" placeholder="gpt-3.5-turbo / deepseek-chat" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
+
+    <label style="display:block; margin-bottom:5px;">API Key:</label>
+    <div class="zh-pwd-wrap">
+        <input type="password" id="zh-cfg-key" value="${cfg.apiKey}" placeholder="sk-xxxx">
+        <div id="zh-toggle-eye" class="zh-eye-icon" title="显示/隐藏">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </div>
+    </div>
+
+    <button id="zh-test-api-btn" class="zh-test-btn">⚡ 测试 API 连通性</button>
+    <div id="zh-test-res" class="zh-test-res"></div>
+
+    <div style="border:1px dashed var(--zh-border); border-radius:4px; padding:10px 12px; margin:0 0 15px; background:var(--zh-quote);">
+        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:8px;">API 配置组</div>
+        <label style="display:block; margin-bottom:5px;">已保存配置:</label>
+        <select id="zh-api-profile-select" style="width:100%; margin-bottom:8px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;"></select>
+        <label style="display:block; margin-bottom:5px;">配置名称:</label>
+        <input type="text" id="zh-api-profile-name" placeholder="例如：DeepSeek / OpenAI / 本地中转" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button id="zh-api-profile-apply" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">应用配置</button>
+            <button id="zh-api-profile-save" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">保存当前为配置</button>
+            <button id="zh-api-profile-new" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">新建配置</button>
+            <button id="zh-api-profile-delete" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">删除配置</button>
+        </div>
+        <div id="zh-api-profile-status" style="font-size:12px; opacity:.75; margin-top:8px;">配置组只保存 Host / Model / Key，不影响翻译语言和其它偏好。</div>
+    </div>
+    
+    <label style="display:block; margin-bottom:5px;">目标翻译语言 / 提示词:</label>
+    <input type="text" id="zh-cfg-lang" value="${cfg.targetLang}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="文言文 / 英文 / 现代汉语解释">
+    <label style="display:block; margin-bottom:5px;">信息雷达兴趣标签:</label>
+    <input type="text" id="zh-cfg-radar-tags" value="${cfg.radarInterestTags || ''}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
+    
+    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autosum" ${cfg.autoSum ? 'checked' : ''}> 展卷时自动生成全文摘要</label>
+    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autotr" ${cfg.autoTr ? 'checked' : ''}> 展卷时异步生成全文翻译 (慎选，耗量大)下次生效</label>
+    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-auto-hide-images" ${cfg.autoHideImages ? 'checked' : ''}> 展卷时自动折叠正文图片</label>
+    <label style="display:block; margin-bottom:5px;">零损分享导出格式:</label>
+    <select id="zh-cfg-share-format" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
+        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（SVG 渲染）</option>
+        <option value="svg" ${!['html', 'png'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
+        <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
+    </select>
+    
+    <label style="display:block; margin-bottom:5px;">回答列表预览:</label>
+    <select id="zh-cfg-answer-preview" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
+        <option value="excerpt" ${cfg.answerPreviewMode !== 'ai' ? 'selected' : ''}>摘录回答前文</option>
+        <option value="ai" ${cfg.answerPreviewMode === 'ai' ? 'selected' : ''}>AI 摘要</option>
+    </select>
+
+    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
+        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">首页信息流 Wiki</div>
+        <label style="display:block; margin-bottom:5px;">采集条数:</label>
+        <input type="number" id="zh-cfg-wiki-max" min="1" value="${cfg.wikiMaxItems || 100}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:5px;">AI 并发数 (0 为不限):</label>
+        <input type="number" id="zh-cfg-wiki-concurrency" min="0" value="${cfg.wikiConcurrency ?? 20}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:5px;">AI RPM (0 为不限):</label>
+        <input type="number" id="zh-cfg-wiki-rpm" min="0" value="${cfg.wikiRpm ?? 300}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+
+        <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-wiki-final" ${cfg.wikiFinalSynthesis !== false ? 'checked' : ''}> 生成今日总览</label>
+        <button id="zh-preview-prompts-btn" type="button" class="zh-test-btn">查看当前系统提示词</button>
+    </div>
+    
+    <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
+`;
+
+const HELP_MODAL_HTML = `
+    <div style="line-height:1.9;">
+        <h3 style="margin:0 0 8px; color:var(--zh-accent);">基础阅读</h3>
+        <ul style="padding-left:20px; margin:0 0 14px;">
+            <li><strong>Ctrl + E</strong>：展卷 / 收卷，切换沉浸阅读。</li>
+            <li><strong>Ctrl + H</strong>：隐藏 / 显示侧边工具栏和退出按钮，适合截图、打印或专注阅读。</li>
+            <li><strong>T</strong>：展开 / 收起段落翻译卡片；未自动翻译时，可逐段点击请求。</li>
+            <li><strong>图片</strong>：点击正文图片可折叠，再点击占位条恢复显示；头像和作者信息不会被主动隐藏。</li>
+            <li><strong>打印 / PDF</strong>：沉浸模式下已隐藏站点 UI，并为正文保留打印边距。</li>
+        </ul>
+
+        <h3 style="margin:0 0 8px; color:var(--zh-accent);">AI 与积累</h3>
+        <ul style="padding-left:20px; margin:0 0 14px;">
+            <li><strong>表达收藏本图标</strong>：打开表达本，查看划词积累；支持复制 Markdown、下载 Markdown / JSON、清空。</li>
+            <li><strong>划词右键</strong>：选中文字后右键，可进行 AI 划词解析，也可把原文、译文、上下文和 AI 批注加入表达本。</li>
+            <li><strong>信息雷达图标</strong>：为当前文章或回答生成短报告，记录 archetype、oneliner、impression、depth、relevance 和标签；报告可保存、复看、导出。</li>
+            <li><strong>分享图标</strong>：导出当前文章或回答的纯净分享稿，支持 HTML、SVG、PNG 长图。PNG 为稳定下载会忽略正文图片，并在导出结果中标注。</li>
+        </ul>
+
+        <h3 style="margin:0 0 8px; color:var(--zh-accent);">首页与 Wiki</h3>
+        <ul style="padding-left:20px; margin:0 0 14px;">
+            <li><strong>首页推荐</strong>：首组沿用页面已有 DOM，后续通过推荐 API 手动加载，每组 5 条，可在列表右上角切换推荐组。</li>
+            <li><strong>Wiki 图标</strong>：仅在首页显示。用于把已加载推荐流抓取全文、生成学习卡片和可复制/下载的 Markdown 日志。</li>
+            <li><strong>Wiki Beta</strong>：当前仍偏实验功能，适合尝鲜和个人工作流验证，性能与体验还没有大量优化。</li>
+        </ul>
+
+        <h3 style="margin:0 0 8px; color:var(--zh-accent);">设置与仓库</h3>
+        <ul style="padding-left:20px; margin:0;">
+            <li><strong>设置图标</strong>：配置 OpenAI 兼容 API Host、模型、API Key、目标翻译语言、信息雷达兴趣标签、分享格式、Wiki 参数等。</li>
+            <li><strong>API 配置组</strong>：设置页可保存多组 Host / Model / Key，按需应用到当前 API 表单；不会改动翻译语言、Wiki 数量或其它阅读偏好。</li>
+            <li><strong>仓库图标</strong>：侧边工具栏可直接跳转项目仓库。</li>
+            <li><strong>仓库地址：</strong><a href="https://github.com/connectedGraph/zhihu-immersive-reader" target="_blank" rel="noopener noreferrer" style="color:var(--zh-accent);">https://github.com/connectedGraph/zhihu-immersive-reader</a></li>
+        </ul>
+    </div>
+`;
+
+// ----- 工具栏按钮的 SVG 图标 (常量) -----
+const ICONS = {
+    translate: `<svg viewBox="0 0 24 24"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>`,
+    settings: `<svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>`,
+    help: `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>`,
+    theme: `<svg viewBox="0 0 24 24"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.08-.09-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-4 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.5-4c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm4.5 0c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.5 4c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>`,
+    expression: `<svg viewBox="0 0 24 24"><path d="M5 4.75C5 3.78 5.78 3 6.75 3h10.5C18.22 3 19 3.78 19 4.75v15.38c0 .64-.73 1-1.24.62L12 16.45l-5.76 4.3A.75.75 0 0 1 5 20.13V4.75zm3 3.5A.75.75 0 0 0 8.75 9h6.5a.75.75 0 0 0 0-1.5h-6.5A.75.75 0 0 0 8 8.25zm0 3A.75.75 0 0 0 8.75 12h4.5a.75.75 0 0 0 0-1.5h-4.5A.75.75 0 0 0 8 11.25z"/></svg>`,
+    radar: `<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9 .75.75 0 0 0 1.5 0 7.5 7.5 0 1 1 3.24 6.17.75.75 0 0 0-.86 1.23A9 9 0 1 0 12 3zm0 3a6 6 0 0 0-6 6 .75.75 0 0 0 1.5 0 4.5 4.5 0 1 1 1.94 3.7.75.75 0 1 0-.86 1.23A6 6 0 1 0 12 6zm0 3a3 3 0 0 0-3 3 .75.75 0 0 0 1.5 0 1.5 1.5 0 1 1 .65 1.23.75.75 0 0 0-.86 1.23A3 3 0 1 0 12 9zm0 2.25a.75.75 0 0 0-.53 1.28l-8.25 8.25a.75.75 0 1 0 1.06 1.06l8.25-8.25A.75.75 0 0 0 12 11.25z"/></svg>`,
+    share: `<svg viewBox="0 0 24 24"><path d="M15.5 5.25a3.25 3.25 0 1 1 .92 2.26l-7.24 4.14a3.36 3.36 0 0 1 0 .7l7.24 4.14a3.25 3.25 0 1 1-.75 1.3l-7.24-4.14a3.25 3.25 0 1 1 0-3.3l7.24-4.14a3.24 3.24 0 0 1-.17-.96z"/></svg>`,
+    wiki: `<svg viewBox="0 0 24 24"><path d="M4.75 3A2.75 2.75 0 0 0 2 5.75v11.5A2.75 2.75 0 0 0 4.75 20H11a2 2 0 0 1 2 2 .75.75 0 0 0 1.5 0 2 2 0 0 1 2-2h2.75A2.75 2.75 0 0 0 22 17.25V5.75A2.75 2.75 0 0 0 19.25 3H16.5A3.5 3.5 0 0 0 13 6.5V18a3.48 3.48 0 0 0-2-.63H4.75c-.69 0-1.25-.56-1.25-1.25V5.75c0-.69.56-1.25 1.25-1.25H11a2 2 0 0 1 2 2 .75.75 0 0 0 1.5 0A2 2 0 0 1 16.5 4.5h2.75c.69 0 1.25.56 1.25 1.25v11.5c0 .69-.56 1.25-1.25 1.25H16.5a3.48 3.48 0 0 0-2 .63V6.5A3.5 3.5 0 0 0 11 3H4.75z"/></svg>`,
+    github: `<svg viewBox="0 0 24 24"><path d="M12 2.25A9.75 9.75 0 0 0 8.92 21.25c.49.09.67-.21.67-.47v-1.72c-2.72.59-3.3-1.16-3.3-1.16-.44-1.13-1.08-1.43-1.08-1.43-.89-.6.07-.59.07-.59.98.07 1.5 1.01 1.5 1.01.87 1.49 2.28 1.06 2.84.81.09-.63.34-1.06.62-1.31-2.17-.25-4.45-1.09-4.45-4.83 0-1.07.38-1.94 1.01-2.62-.1-.25-.44-1.24.1-2.58 0 0 .83-.26 2.7 1a9.3 9.3 0 0 1 4.92 0c1.87-1.26 2.69-1 2.69-1 .54 1.34.2 2.33.1 2.58.63.68 1.01 1.55 1.01 2.62 0 3.75-2.28 4.58-4.46 4.82.35.3.67.91.67 1.83v2.56c0 .26.18.57.68.47A9.75 9.75 0 0 0 12 2.25z"/></svg>`,
+    regenerate: `<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93.75.75 0 0 0-1.39-.56A6.5 6.5 0 1 1 12 5.5c1.8 0 3.43.73 4.61 1.91L14.75 9.25H20V4l-2.35 2.35z"/></svg>`
+};
+
+/**
+ * ============================================================================
+ * 工具函数 & 全局状态
+ * ============================================================================
+ */
+(function() {
+    if (window._hasZhihuImmersiveSetup) return;
+    window._hasZhihuImmersiveSetup = true;
+    window._isImmersive = false;
+    window._uiHidden = false;
+    window._trVisible = false;
+
+    let _articleNode = null;
+    let _actionBarNode = null;
+    let _postCommentsNode = null;
+    let _postCommentInputNode = null;
+    let _liveMountState = null;
+    let _articleSummary = "";
+    let _adCleanupObserver = null;
+    const _translationMemoryCache = new Map();
+    const _questionAnswerCache = new Map();
+    const _homeFeedCache = new Map();
+    const _shareImageDataUrlCache = new Map();
+    const QUESTION_CACHE_DB = 'zh-immersive-question-cache';
+    const QUESTION_CACHE_STORE = 'questionAnswers';
+    const WIKI_HISTORY_KEY = 'zh-immersive-wiki-history';
+    const WIKI_HISTORY_MAX = 12;
+    const HOME_BATCH_SIZE = 5;
+    const HOME_RECOMMEND_API = 'https://www.zhihu.com/api/v3/feed/topstory/recommend';
+    const TRANSLATION_CACHE_KEY = 'zh-immersive-translation-cache-v1';
+    const TRANSLATION_CACHE_MAX = 800;
+    const EXPRESSION_BOOK_KEY = 'zh-immersive-expression-book-v1';
+    const EXPRESSION_BOOK_MAX = 1200;
+    const RADAR_REPORT_BOOK_KEY = 'zh-immersive-radar-report-book-v1';
+    const RADAR_REPORT_BOOK_MAX = 800;
+    const API_PROFILES_KEY = 'zh-immersive-api-profiles-v1';
+    const radarJobState = new Map();
+
+    // 加载或初始化配置
+    let config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(localStorage.getItem('zh-immersive-config') || '{}'));
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== 'zh-immersive-config' || !event.newValue) return;
+        try {
+            config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(event.newValue));
+            if (window._isImmersive) setupImageToggles();
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：同步配置失败', err);
+        }
+    });
+
+    function saveConfig(newCfg) {
+        config = Object.assign(config, newCfg);
+        localStorage.setItem('zh-immersive-config', JSON.stringify(config));
+    }
+
+    function createApiProfileId() {
+        return `api-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    }
+
+    function getApiProfileStoreFallback() {
+        const id = createApiProfileId();
+        return {
+            activeId: id,
+            profiles: [{
+                id,
+                name: '默认配置',
+                apiHost: config.apiHost || DEFAULT_CONFIG.apiHost,
+                apiModel: config.apiModel || DEFAULT_CONFIG.apiModel,
+                apiKey: config.apiKey || '',
+                updatedAt: new Date().toISOString()
+            }]
+        };
+    }
+
+    function normalizeApiProfileStore(store) {
+        const fallback = getApiProfileStoreFallback();
+        const profiles = Array.isArray(store?.profiles)
+            ? store.profiles.map((profile, index) => ({
+                id: profile.id || createApiProfileId(),
+                name: String(profile.name || `API 配置 ${index + 1}`).trim(),
+                apiHost: String(profile.apiHost || '').trim(),
+                apiModel: String(profile.apiModel || '').trim(),
+                apiKey: String(profile.apiKey || '').trim(),
+                updatedAt: profile.updatedAt || new Date().toISOString()
+            })).filter(profile => profile.apiHost || profile.apiModel || profile.apiKey || profile.name)
+            : [];
+        if (!profiles.length) return fallback;
+        const activeId = profiles.some(profile => profile.id === store?.activeId) ? store.activeId : profiles[0].id;
+        return { activeId, profiles };
+    }
+
+    function loadApiProfiles() {
+        try {
+            const raw = localStorage.getItem(API_PROFILES_KEY);
+            return normalizeApiProfileStore(raw ? JSON.parse(raw) : null);
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：API 配置组读取失败', err);
+            return getApiProfileStoreFallback();
+        }
+    }
+
+    function saveApiProfiles(store) {
+        const normalized = normalizeApiProfileStore(store);
+        localStorage.setItem(API_PROFILES_KEY, JSON.stringify(normalized));
+        return normalized;
+    }
+
+    function readApiProfileNameFromForm() {
+        return (document.getElementById('zh-api-profile-name')?.value || '').trim();
+    }
+
+    function getSelectedApiProfile(store = loadApiProfiles()) {
+        const selectedId = document.getElementById('zh-api-profile-select')?.value || store.activeId;
+        return store.profiles.find(profile => profile.id === selectedId) || store.profiles[0] || null;
+    }
+
+    function setApiProfileStatus(message) {
+        const status = document.getElementById('zh-api-profile-status');
+        if (status) status.textContent = message;
+    }
+
+    function fillApiFormFromProfile(profile) {
+        if (!profile) return;
+        const hostEl = document.getElementById('zh-cfg-host');
+        const modelEl = document.getElementById('zh-cfg-model');
+        const keyEl = document.getElementById('zh-cfg-key');
+        const nameEl = document.getElementById('zh-api-profile-name');
+        if (hostEl) hostEl.value = profile.apiHost || '';
+        if (modelEl) modelEl.value = profile.apiModel || '';
+        if (keyEl) keyEl.value = profile.apiKey || '';
+        if (nameEl) nameEl.value = profile.name || '';
+    }
+
+    function renderApiProfileControls(store = loadApiProfiles()) {
+        const select = document.getElementById('zh-api-profile-select');
+        const nameEl = document.getElementById('zh-api-profile-name');
+        if (!select || !nameEl) return store;
+        select.innerHTML = store.profiles.map(profile => `<option value="${escapeHTML(profile.id)}" ${profile.id === store.activeId ? 'selected' : ''}>${escapeHTML(profile.name || '未命名配置')}</option>`).join('');
+        const active = store.profiles.find(profile => profile.id === store.activeId) || store.profiles[0];
+        nameEl.value = active?.name || '';
+        return store;
+    }
+
+    function getApiProfileFromForm(existingId = '') {
+        return {
+            id: existingId || createApiProfileId(),
+            name: readApiProfileNameFromForm() || '未命名配置',
+            ...readApiSettingsFromForm(),
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    function bindApiProfileControls() {
+        let store = renderApiProfileControls(loadApiProfiles());
+        const select = document.getElementById('zh-api-profile-select');
+
+        select?.addEventListener('change', () => {
+            store = loadApiProfiles();
+            const selected = getSelectedApiProfile(store);
+            const nameEl = document.getElementById('zh-api-profile-name');
+            if (nameEl) nameEl.value = selected?.name || '';
+            setApiProfileStatus(selected ? `已选择：${selected.name}` : '暂无可用配置。');
+        });
+
+        document.getElementById('zh-api-profile-apply')?.addEventListener('click', () => {
+            store = loadApiProfiles();
+            const selected = getSelectedApiProfile(store);
+            if (!selected) return setApiProfileStatus('暂无可应用配置。');
+            fillApiFormFromProfile(selected);
+            store.activeId = selected.id;
+            store = saveApiProfiles(store);
+            saveConfig({ apiHost: selected.apiHost, apiModel: selected.apiModel, apiKey: selected.apiKey });
+            renderApiProfileControls(store);
+            setApiProfileStatus(`已应用配置：${selected.name}`);
+        });
+
+        document.getElementById('zh-api-profile-save')?.addEventListener('click', () => {
+            store = loadApiProfiles();
+            const selected = getSelectedApiProfile(store);
+            const profile = getApiProfileFromForm(selected?.id);
+            const index = store.profiles.findIndex(item => item.id === profile.id);
+            if (index >= 0) store.profiles[index] = profile;
+            else store.profiles.unshift(profile);
+            store.activeId = profile.id;
+            store = saveApiProfiles(store);
+            renderApiProfileControls(store);
+            setApiProfileStatus(`已保存配置：${profile.name}`);
+        });
+
+        document.getElementById('zh-api-profile-new')?.addEventListener('click', () => {
+            store = loadApiProfiles();
+            const profile = getApiProfileFromForm();
+            profile.name = readApiProfileNameFromForm() || `API 配置 ${store.profiles.length + 1}`;
+            store.profiles.unshift(profile);
+            store.activeId = profile.id;
+            store = saveApiProfiles(store);
+            renderApiProfileControls(store);
+            setApiProfileStatus(`已新建配置：${profile.name}`);
+        });
+
+        document.getElementById('zh-api-profile-delete')?.addEventListener('click', () => {
+            store = loadApiProfiles();
+            const selected = getSelectedApiProfile(store);
+            if (!selected) return setApiProfileStatus('暂无可删除配置。');
+            if (store.profiles.length <= 1) return setApiProfileStatus('至少保留一个 API 配置。');
+            if (!confirm(`确认删除配置「${selected.name}」？`)) return;
+            store.profiles = store.profiles.filter(profile => profile.id !== selected.id);
+            store.activeId = store.profiles[0]?.id || '';
+            store = saveApiProfiles(store);
+            renderApiProfileControls(store);
+            setApiProfileStatus('配置已删除。');
+        });
+    }
+
+    function openQuestionCacheDB() {
+        return new Promise((resolve, reject) => {
+            if (!window.indexedDB) {
+                reject(new Error('当前环境不支持 IndexedDB'));
+                return;
+            }
+            const req = indexedDB.open(QUESTION_CACHE_DB, 1);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(QUESTION_CACHE_STORE)) {
+                    db.createObjectStore(QUESTION_CACHE_STORE, { keyPath: 'cacheKey' });
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async function getQuestionCacheRecord(cacheKey) {
+        const db = await openQuestionCacheDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(QUESTION_CACHE_STORE, 'readonly');
+            const req = tx.objectStore(QUESTION_CACHE_STORE).get(cacheKey);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error);
+            tx.oncomplete = () => db.close();
+            tx.onerror = () => db.close();
+        });
+    }
+
+    async function putQuestionCacheRecord(record) {
+        const db = await openQuestionCacheDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(QUESTION_CACHE_STORE, 'readwrite');
+            tx.objectStore(QUESTION_CACHE_STORE).put(record);
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+        });
+    }
+
+    let currentThemeIndex = 0;
+    function applyTheme(index) {
+        const theme = THEMES[index];
+        const root = document.documentElement;
+        for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
+    }
+
+    function sanitizeLLMHTML(content) {
+        const template = document.createElement('template');
+        template.innerHTML = String(content || '');
+
+        const allowedTags = new Set([
+            'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD', 'CAPTION', 'COLGROUP', 'COL',
+            'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'CODE', 'PRE', 'BLOCKQUOTE',
+            'UL', 'OL', 'LI', 'SPAN', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SUP', 'SUB'
+        ]);
+        const allowedAttrs = new Set(['colspan', 'rowspan', 'scope', 'align']);
+        const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+        const unsafeNodes = [];
+
+        while (walker.nextNode()) {
+            const el = walker.currentNode;
+            if (!allowedTags.has(el.tagName)) {
+                unsafeNodes.push(el);
+                continue;
+            }
+
+            Array.from(el.attributes).forEach(attr => {
+                const name = attr.name.toLowerCase();
+                if (name.startsWith('on') || name === 'style' || !allowedAttrs.has(name)) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        }
+
+        unsafeNodes.forEach(el => el.replaceWith(document.createTextNode(el.textContent || '')));
+        return template.innerHTML;
+    }
+
+    function getImagePlaceholder(img) {
+        const next = img.nextElementSibling;
+        return next && next.classList.contains('zh-img-placeholder') ? next : null;
+    }
+
+    function isImageToggleExcluded(img) {
+        const classText = String(img.className || '');
+        if (img.classList.contains('Avatar') || /(^|\s|-)avatar(\s|-|$)/i.test(classText)) return true;
+        return !!img.closest([
+            '.Post-Header',
+            '.css-34mzkj',
+            '.AuthorInfo',
+            '.ContentItem-meta',
+            '.AnswerItem-authorInfo',
+            '.AuthorInfo-avatarWrapper',
+            '.UserLink',
+            '.Avatar',
+            '[class*="Avatar"]',
+            '[class*="avatar"]',
+            '.zh-answer-list-meta',
+            '.Reward',
+            '.ContentItem-actions',
+            '.zh-home-list',
+            '.zh-question-list'
+        ].join(', '));
+    }
+
+    function clearImageToggle(img) {
+        const placeholder = getImagePlaceholder(img);
+        if (placeholder) placeholder.remove();
+        img.classList.remove('zh-img-hidden');
+        delete img.dataset.zhImgHidden;
+    }
+
+    function setImageHidden(img, hidden) {
+        if (hidden && isImageToggleExcluded(img)) {
+            clearImageToggle(img);
+            return;
+        }
+        const placeholder = getImagePlaceholder(img);
+        img.classList.toggle('zh-img-hidden', hidden);
+        img.dataset.zhImgHidden = hidden ? '1' : '0';
+        if (placeholder) placeholder.style.display = hidden ? 'flex' : 'none';
+    }
+
+    function setupImageToggles() {
+        document.querySelectorAll('#immersive-wrapper img').forEach(img => {
+            const realSrc = img.getAttribute('data-original') || img.getAttribute('data-actualsrc');
+            if (realSrc) img.src = realSrc;
+
+            if (isImageToggleExcluded(img)) {
+                clearImageToggle(img);
+                return;
+            }
+
+            let placeholder = getImagePlaceholder(img);
+            if (!placeholder) {
+                placeholder = document.createElement('div');
+                placeholder.className = 'zh-img-placeholder';
+                placeholder.textContent = '图片已隐藏，点击显示';
+                img.insertAdjacentElement('afterend', placeholder);
+            }
+
+            placeholder.onclick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setImageHidden(img, false);
+            };
+
+            if (!img.dataset.zhImageToggleReady) {
+                img.addEventListener('click', (event) => {
+                    if (!window._isImmersive || img.classList.contains('zh-img-hidden') || isImageToggleExcluded(img)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setImageHidden(img, true);
+                });
+                img.dataset.zhImageToggleReady = '1';
+            }
+
+            setImageHidden(img, !!config.autoHideImages);
+        });
+    }
+
+    function resetImageToggles() {
+        document.querySelectorAll('.zh-img-placeholder').forEach(placeholder => placeholder.remove());
+        document.querySelectorAll('img.zh-img-hidden').forEach(img => {
+            img.classList.remove('zh-img-hidden');
+            delete img.dataset.zhImgHidden;
+        });
+    }
+
+    function hideArticleAdCards(root = document) {
+        const scope = root.querySelectorAll ? root : document;
+        if (scope.matches && scope.matches('.pc-article-answer-card')) {
+            const adCard = scope.closest('.pc-article-answer') || scope;
+            adCard.dataset.origDisplay = adCard.style.display || '';
+            adCard.style.display = 'none';
+            adCard.classList.add('zh-hidden-by-immersive-inner');
+        }
+        scope.querySelectorAll('.pc-article-answer-card').forEach(card => {
+            const adCard = card.closest('.pc-article-answer') || card;
+            adCard.dataset.origDisplay = adCard.style.display || '';
+            adCard.style.display = 'none';
+            adCard.classList.add('zh-hidden-by-immersive-inner');
+        });
+    }
+
+    function startArticleAdCleanup() {
+        hideArticleAdCards(_articleNode || document);
+        if (_adCleanupObserver || !_articleNode) return;
+
+        _adCleanupObserver = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) hideArticleAdCards(node);
+                });
+            });
+        });
+        _adCleanupObserver.observe(_articleNode, { childList: true, subtree: true });
+    }
+
+    function stopArticleAdCleanup() {
+        if (_adCleanupObserver) {
+            _adCleanupObserver.disconnect();
+            _adCleanupObserver = null;
+        }
+    }
+
+    function removeSelectionContextMenu() {
+        const menu = document.getElementById('zh-selection-context-menu');
+        if (menu) menu.remove();
+    }
+
+    function getSelectionAnchorElement() {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return null;
+        const node = selection.anchorNode || selection.getRangeAt(0).commonAncestorContainer;
+        return node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement || null;
+    }
+
+    function findPrevElementSibling(el) {
+        let current = el?.previousSibling || null;
+        while (current) {
+            if (current.nodeType === Node.ELEMENT_NODE) return current;
+            current = current.previousSibling;
+        }
+        return null;
+    }
+
+    function findNextElementSibling(el) {
+        let current = el?.nextSibling || null;
+        while (current) {
+            if (current.nodeType === Node.ELEMENT_NODE) return current;
+            current = current.nextSibling;
+        }
+        return null;
+    }
+
+    function getExpressionContextFromSelection(selectedText, fallbackContextText = '') {
+        const anchorEl = getSelectionAnchorElement();
+        const translationCard = anchorEl?.closest?.('.zh-tr-card');
+        let sourceNode = null;
+        let translatedNode = null;
+
+        if (translationCard) {
+            translatedNode = translationCard;
+            const prev = findPrevElementSibling(translationCard);
+            sourceNode = prev && isTranslatableBlock(prev) ? prev : null;
+        } else {
+            sourceNode = anchorEl?.closest?.('h1, h2, h3, h4, p, table, ul, ol, blockquote') || null;
+            let next = sourceNode ? findNextElementSibling(sourceNode) : null;
+            if (next?.classList?.contains('zh-tr-card')) translatedNode = next;
+        }
+
+        const sourceText = normalizeTranslationCacheText(sourceNode?.innerText || sourceNode?.textContent || fallbackContextText || '');
+        const translatedText = normalizeTranslationCacheText(translatedNode?.innerText || translatedNode?.textContent || '');
+        return {
+            selectedText: normalizeTranslationCacheText(selectedText),
+            sourceText,
+            translatedText,
+            selectedInTranslation: !!translationCard
+        };
+    }
+
+    function loadExpressionBook() {
+        try {
+            const raw = localStorage.getItem(EXPRESSION_BOOK_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：表达本读取失败', err);
+            return [];
+        }
+    }
+
+    function saveExpressionBook(items) {
+        const safeItems = (Array.isArray(items) ? items : []).slice(0, EXPRESSION_BOOK_MAX);
+        try {
+            localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems));
+            return true;
+        } catch (err) {
+            try {
+                localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(EXPRESSION_BOOK_MAX / 2))));
+                return true;
+            } catch (innerErr) {
+                console.warn('知乎沉浸式阅读：表达本写入失败', innerErr);
+                return false;
+            }
+        }
+    }
+
+    function getCurrentPageTitleForExpression() {
+        return (_questionState.questionTitle || document.querySelector('#immersive-wrapper h1, h1')?.innerText || document.title || '知乎内容').replace(/\s+/g, ' ').trim();
+    }
+
+    function openSaveExpressionModal(selectedText, contextText) {
+        const context = getExpressionContextFromSelection(selectedText, contextText);
+        if (!context.selectedText) {
+            alert('没有可收藏的划词内容。');
+            return;
+        }
+
+        const modalId = 'zh-save-expr-modal-' + Date.now();
+        const modalHTML = `
+            <div style="margin-bottom: 12px; font-size: 13px; opacity: 0.8; max-height: 100px; overflow: auto; background: var(--zh-quote); padding: 8px; border-radius: 4px;">
+                <strong>【选中词句】</strong>：${escapeHTML(context.selectedText)}
+            </div>
+            <div style="margin-bottom: 8px;"><strong>批注/释义（可选）：</strong></div>
+            <textarea id="zh-expr-annotation-input" style="width:100%; height:80px; margin-bottom:12px; padding:8px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); border-radius:4px; color:var(--zh-text); outline:none; resize:vertical; font-family:inherit;"></textarea>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <button id="zh-expr-ai-btn" class="zh-test-btn" style="width:auto; margin:0; padding:6px 12px; font-size:13px;">✨ AI 自动生成批注</button>
+                <div style="display:flex; gap:8px;">
+                    <button id="zh-expr-cancel-btn" class="zh-inline-btn" style="background:transparent; border-color:var(--zh-border); color:var(--zh-text);">取消</button>
+                    <button id="zh-expr-save-btn" class="zh-modal-btn" style="width:auto; padding:6px 16px;">确认保存</button>
+                </div>
+            </div>
+        `;
+
+        const modal = createModal(modalId, '📝 收藏至表达本', modalHTML);
+
+        const aiBtn = document.getElementById('zh-expr-ai-btn');
+        const saveBtn = document.getElementById('zh-expr-save-btn');
+        const cancelBtn = document.getElementById('zh-expr-cancel-btn');
+        const annotationInput = document.getElementById('zh-expr-annotation-input');
+
+        aiBtn.addEventListener('click', async () => {
+            aiBtn.disabled = true;
+            aiBtn.innerText = '正在生成...';
+            aiBtn.style.opacity = '0.7';
+            try {
+                const draft = annotationInput.value.trim();
+                const sys = "你是一个语言学习/阅读助手。请对用户提取的词句进行简明批注，包含：1. 释义与语境分析 2. 其他常见用法/搭配（如果有）。如果用户提供了草稿批注/方向，请优先沿着草稿的理解方向润色、补全和压缩，不要无视草稿另起炉灶。请保持精简，总计不超过150字。输出纯文本。";
+                const usr = `【原文段落】：\n${context.sourceText}\n\n【选中词句】：\n${context.selectedText}${draft ? `\n\n【用户草稿批注/方向】：\n${draft}` : ''}`;
+                const res = await callLLM(sys, usr);
+                annotationInput.value = res;
+            } catch (err) {
+                alert('AI 批注生成失败：' + err.message);
+            } finally {
+                aiBtn.disabled = false;
+                aiBtn.innerText = '✨ 重新生成批注';
+                aiBtn.style.opacity = '1';
+            }
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        saveBtn.addEventListener('click', () => {
+            const items = loadExpressionBook();
+            const entry = {
+                id: `expr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+                savedAt: new Date().toISOString(),
+                selectedText: context.selectedText,
+                sourceText: context.sourceText,
+                translatedText: context.translatedText,
+                selectedInTranslation: context.selectedInTranslation,
+                url: location.href,
+                title: getCurrentPageTitleForExpression(),
+                annotation: annotationInput.value.trim()
+            };
+            const dupKey = `${stableHash(entry.url)}::${stableHash(entry.selectedText)}::${stableHash(entry.sourceText)}::${stableHash(entry.translatedText)}`;
+            const filtered = items.filter(item => `${stableHash(item.url)}::${stableHash(item.selectedText)}::${stableHash(item.sourceText)}::${stableHash(item.translatedText)}` !== dupKey);
+            filtered.unshift(entry);
+            
+            if (saveExpressionBook(filtered)) {
+                showCollectOverlay(`已加入表达本：${entry.selectedText.slice(0, 24)}`);
+                setTimeout(removeCollectOverlay, 1500);
+                if (document.getElementById('zh-expression-book-modal')) {
+                    const exprModal = document.getElementById('zh-expression-book-modal');
+                    exprModal.remove();
+                    showExpressionBookModal();
+                }
+            } else {
+                alert('表达本保存失败，可能是 localStorage 空间不足。');
+            }
+            modal.remove();
+        });
+    }
+
+    function formatExpressionBookMarkdown(items = loadExpressionBook()) {
+        const lines = ['# 知乎表达收藏本', '', `导出时间：${new Date().toLocaleString()}`, `条目数量：${items.length}`, ''];
+        items.forEach((item, index) => {
+            lines.push(`## ${index + 1}. ${item.selectedText || '未命名表达'}`);
+            lines.push(`- 来源：${item.title || '知乎内容'}`);
+            lines.push(`- 链接：${item.url || ''}`);
+            lines.push(`- 收藏时间：${item.savedAt ? new Date(item.savedAt).toLocaleString() : ''}`);
+            lines.push(`- 划词位置：${item.selectedInTranslation ? '译文' : '原文'}`);
+            lines.push('');
+            if (item.annotation) {
+                lines.push('**AI 批注**');
+                lines.push('');
+                lines.push(`> ${String(item.annotation).replace(/\n/g, '\n> ')}`);
+                lines.push('');
+            }
+            lines.push('**原段落**');
+            lines.push('');
+            lines.push(`> ${String(item.sourceText || '').replace(/\n/g, '\n> ') || '未捕获'}`);
+            lines.push('');
+            lines.push('**译文段落**');
+            lines.push('');
+            lines.push(`> ${String(item.translatedText || '').replace(/\n/g, '\n> ') || '暂无译文'}`);
+            lines.push('');
+        });
+        return lines.join('\n');
+    }
+
+    function downloadBlobFile(filename, blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
+        downloadBlobFile(filename, new Blob([content], { type: mime }));
+    }
+
+    function sanitizeShareFilename(name) {
+        return String(name || 'zhihu-share')
+            .replace(/[\\/:*?"<>|]/g, '_')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 80) || 'zhihu-share';
+    }
+
+    function getCurrentThemeVarsText() {
+        const vars = THEMES[currentThemeIndex]?.vars || THEMES[0].vars;
+        return Object.entries(vars).map(([key, value]) => `${key}: ${value};`).join('\n');
+    }
+
+    function getZeroLossShareCSS() {
+        return `
+            :root { ${getCurrentThemeVarsText()} }
+            :root { --zh-meta: #736b58; --zh-link: #a13d3d; }
+            * { box-sizing: border-box; }
+            body, .zh-share-svg-root { margin: 0; background: var(--zh-bg); color: var(--zh-text); font-family: 'Times New Roman', 'STKaiti', 'KaiTi', '楷体', serif; padding: 40px 20px; }
+            .zh-share-page { width: 860px; margin: 0 auto; padding: 60px 80px; background: var(--zh-paper); border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,.08); border-left: 4px solid var(--zh-accent); color: var(--zh-text); }
+            .zh-share-question-title { font-size: 32px; font-weight: bold; color: var(--zh-title); margin: 0 0 30px; padding-bottom: 20px; border-bottom: 2px solid var(--zh-accent); line-height: 1.5; letter-spacing: 0; }
+            .ContentItem-meta { background: var(--zh-quote); padding: 20px 25px; border-radius: 8px; margin-bottom: 40px; border: 1px solid var(--zh-border); }
+            .AuthorInfo { display: flex; align-items: center; gap: 15px; }
+            .AuthorInfo-avatar { width: 50px; height: 50px; object-fit: cover; border-radius: 5px; border: 2px solid var(--zh-paper); box-shadow: 0 2px 5px rgba(0,0,0,.1); }
+            .AuthorInfo-content { flex: 1; min-width: 0; }
+            .AuthorInfo-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+            .AuthorInfo-name a, .AuthorInfo-name { font-size: 18px; font-weight: bold; color: var(--zh-title); text-decoration: none; border: 0; }
+            .AuthorInfo-badgeText { font-size: 14px; color: var(--zh-meta); line-height: 1.45; }
+            .zh-share-meta-lines { margin-top: 12px; display: grid; gap: 6px; font-family: sans-serif; font-size: 13px; color: var(--zh-accent); }
+            .zh-share-meta-line { display: flex; align-items: center; gap: 6px; }
+            .zh-share-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; padding-top: 18px; border-top: 1px dashed var(--zh-border); font-family: sans-serif; }
+            .zh-share-action-chip { border: 1px solid var(--zh-border); color: var(--zh-accent); background: var(--zh-quote); border-radius: 999px; padding: 4px 10px; font-size: 13px; line-height: 1.4; }
+            .RichContent-inner, .Post-RichTextContainer, .RichText { font-size: 18px; line-height: 2; color: var(--zh-text); text-align: justify; }
+            .RichContent-inner p, .Post-RichTextContainer p, .RichText p { margin: 1.4em 0; }
+            .RichContent-inner a, .Post-RichTextContainer a, .RichText a { color: var(--zh-link); text-decoration: none; border-bottom: 1px dashed var(--zh-link); }
+            .RichContent-inner blockquote, .Post-RichTextContainer blockquote, .RichText blockquote { border-left: 4px solid var(--zh-accent); background: var(--zh-quote); padding: 15px 20px; margin: 25px 0; font-style: italic; color: #4a4539; }
+            .zh-share-page pre, .zh-share-page code { background: var(--zh-code); font-family: Consolas, monospace; }
+            .zh-share-page pre { padding: 1em 1.2em; border-radius: 6px; overflow-x: auto; line-height: 1.5; }
+            .zh-share-page img { max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+            .zh-share-page img.Avatar, .zh-share-page .Avatar img, .zh-share-page .AuthorInfo-avatarWrapper img { width: 50px; height: 50px; min-width: 50px; object-fit: cover; border-radius: 5px; box-shadow: none; }
+            .zh-share-page .css-4gq0sj, .zh-share-page .css-2dtzk2, .zh-share-page .ZDI--FourPointedStar16, .zh-share-page .Button, .zh-share-page .Popover, .zh-share-page .ModalLoading-content, .zh-share-page .css-8atqhb, .zh-share-page .ContentItem-actions { display: none !important; }
+            .ContentItem-time { margin-top: 40px; font-size: 14px; color: var(--zh-meta); font-family: sans-serif; }
+            .ContentItem-time a { color: inherit; text-decoration: none; border: 0; }
+            .zh-share-warning { margin-top: 24px; padding: 10px 14px; border: 1px dashed var(--zh-border); border-radius: 6px; background: var(--zh-quote); color: var(--zh-meta); font-size: 13px; line-height: 1.6; font-family: sans-serif; }
+            .zh-share-source { margin-top: 30px; padding-top: 20px; border-top: 1px dashed var(--zh-border); color: var(--zh-meta); font-size: 13px; word-break: break-all; font-family: Consolas, monospace; }
+            .zh-share-page table { width: 100%; border-collapse: collapse; }
+            .zh-share-page th, .zh-share-page td { border: 1px solid var(--zh-border); padding: 6px 8px; }
+            @media (max-width: 768px) { body { padding: 0; } .zh-share-page { width: 100%; padding: 30px 20px; border-left: none; border-top: 4px solid var(--zh-accent); border-radius: 0; } }
+        `;
+    }
+
+    function cleanupZeroLossShareClone(root) {
+        const removeSelectors = [
+            'script',
+            'style',
+            'noscript',
+            'iframe',
+            'video',
+            'audio',
+            'canvas',
+            'object',
+            'embed',
+            '.zh-tr-card',
+            '.zh-img-placeholder',
+            '.zh-question-toolbar',
+            '.zh-home-toolbar',
+            '.zh-reader-top-nav',
+            '#zh-article-placeholder',
+            '#zh-action-placeholder',
+            '#zh-comments-placeholder',
+            '#zh-comment-input-placeholder',
+            '[id^="zh-live-node-placeholder"]',
+            '.zh-question-detail',
+            '.Comments-container',
+            '.CommentEditor',
+            '.RichText-MCNLinkCardContainer',
+            '.pc-article-answer-card',
+            '.pc-article-answer-text-chain',
+            '.pc-article-answer-big-img',
+            '.ecommerce-ad-box',
+            '.MCNLinkCard',
+            '.Button',
+            '.Popover',
+            '.FollowButton',
+            '.OptionsButton',
+            '.ModalLoading-content',
+            '.ContentItem-actions',
+            '.RichContent-collapsedText',
+            '.css-4gq0sj',
+            '.css-2dtzk2',
+            '.css-8atqhb',
+            '.ZDI--FourPointedStar16',
+            'meta',
+            '.zh-hidden-by-immersive-inner',
+            ...EXPORT_HIDDEN_SELECTORS
+        ];
+        removeSelectors.forEach(selector => {
+            try {
+                root.querySelectorAll(selector).forEach(el => el.remove());
+            } catch (err) {
+                console.warn('知乎零损分享：跳过不兼容的导出隐藏选择器', selector, err);
+            }
+        });
+
+        root.querySelectorAll('img').forEach(img => {
+            const realSrc = img.getAttribute('data-original') || img.getAttribute('data-actualsrc') || img.getAttribute('data-src') || img.getAttribute('src');
+            if (realSrc) img.setAttribute('src', realSrc);
+        });
+
+        root.querySelectorAll('*').forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                const name = attr.name.toLowerCase();
+                const value = attr.value || '';
+                if (
+                    name.startsWith('on')
+                    || name === 'contenteditable'
+                    || name === 'tabindex'
+                    || name === 'style'
+                    || name.startsWith('data-')
+                    || name.startsWith('aria-')
+                    || name === 'role'
+                    || name === 'itemprop'
+                    || name === 'itemscope'
+                    || name === 'itemtype'
+                ) {
+                    el.removeAttribute(attr.name);
+                    return;
+                }
+                if ((name === 'href' || name === 'src') && value && !/^(data:|blob:|#|mailto:|javascript:)/i.test(value)) {
+                    try { el.setAttribute(attr.name, new URL(value, location.href).href); } catch (err) {}
+                }
+            });
+        });
+
+        root.querySelectorAll('img').forEach(img => {
+            img.classList.remove('zh-img-hidden');
+            img.removeAttribute('data-zh-img-hidden');
+        });
+
+        return root;
+    }
+
+    function normalizeShareText(text) {
+        return String(text || '').replace(/\u200b/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getShareImageSrc(img) {
+        if (!img) return '';
+        return img.getAttribute('src') || img.getAttribute('data-original') || img.getAttribute('data-actualsrc') || img.getAttribute('data-src') || '';
+    }
+
+    function findShareAuthorRoot(root) {
+        return root?.querySelector?.('.ContentItem-meta .AuthorInfo[itemtype*="Person"], .AnswerItem-authorInfo .AuthorInfo, .Post-Header .AuthorInfo, .AuthorInfo[itemtype*="Person"], .AuthorInfo') || null;
+    }
+
+    function extractShareAuthor(root) {
+        const authorRoot = findShareAuthorRoot(root);
+        if (!authorRoot) return null;
+        const avatar = authorRoot.querySelector('img.Avatar, .AuthorInfo-avatarWrapper img, img');
+        const name = authorRoot.querySelector('meta[itemprop="name"]')?.content
+            || authorRoot.querySelector('.AuthorInfo-name, .UserLink.AuthorInfo-name, .UserLink-link')?.innerText
+            || '';
+        const headline = authorRoot.querySelector('.AuthorInfo-badgeText, .AuthorInfo-detail, .AuthorInfo-badge')?.innerText || '';
+        const url = authorRoot.querySelector('meta[itemprop="url"]')?.content
+            || authorRoot.querySelector('a[href*="/people/"], .UserLink-link[href]')?.href
+            || '';
+        const avatarSrc = getShareImageSrc(avatar);
+        if (!name && !avatarSrc && !headline) return null;
+        return {
+            name: normalizeShareText(name) || '知乎作者',
+            headline: normalizeShareText(headline),
+            url,
+            avatarSrc,
+            avatarAlt: avatar?.alt || normalizeShareText(name)
+        };
+    }
+
+    function getShareMetaLines(root) {
+        const lines = [];
+        const voteLine = normalizeShareText(root?.querySelector?.('.ContentItem-meta .css-dvccr2, .ContentItem-meta .css-1lr85n')?.innerText);
+        const columnLine = normalizeShareText(root?.querySelector?.('.ContentItem-meta .css-140fcia, .css-3ibr72 .css-1b0xgmx')?.innerText);
+        const upvote = root?.querySelector?.('meta[itemprop="upvoteCount"]')?.content;
+        const comment = root?.querySelector?.('meta[itemprop="commentCount"]')?.content;
+        if (voteLine) lines.push(voteLine);
+        else if (upvote) lines.push(`${upvote} 人赞同`);
+        if (columnLine) lines.push(columnLine);
+        if (comment) lines.push(`${comment} 条评论`);
+        return Array.from(new Set(lines.filter(Boolean))).slice(0, 4);
+    }
+
+    function buildShareAuthorCard(root) {
+        const author = extractShareAuthor(root);
+        const lines = getShareMetaLines(root);
+        if (!author && !lines.length) return null;
+
+        const card = document.createElement('div');
+        card.className = 'ContentItem-meta';
+        if (author) {
+            const info = document.createElement('div');
+            info.className = 'AuthorInfo';
+            const avatarWrap = document.createElement(author.url ? 'a' : 'span');
+            avatarWrap.className = 'AuthorInfo-avatarWrapper';
+            if (author.url) {
+                avatarWrap.href = author.url;
+                avatarWrap.target = '_blank';
+                avatarWrap.rel = 'noopener noreferrer';
+            }
+            if (author.avatarSrc) {
+                const img = document.createElement('img');
+                img.className = 'Avatar AuthorInfo-avatar';
+                img.src = author.avatarSrc;
+                img.alt = author.avatarAlt || author.name;
+                avatarWrap.appendChild(img);
+            }
+            const content = document.createElement('div');
+            content.className = 'AuthorInfo-content';
+            const head = document.createElement('div');
+            head.className = 'AuthorInfo-head';
+            const name = document.createElement(author.url ? 'a' : 'span');
+            name.className = 'AuthorInfo-name';
+            if (author.url) {
+                name.href = author.url;
+                name.target = '_blank';
+                name.rel = 'noopener noreferrer';
+            }
+            name.textContent = author.name;
+            head.appendChild(name);
+            content.appendChild(head);
+            if (author.headline) {
+                const detail = document.createElement('div');
+                detail.className = 'AuthorInfo-badgeText';
+                detail.textContent = author.headline;
+                content.appendChild(detail);
+            }
+            info.appendChild(avatarWrap);
+            info.appendChild(content);
+            card.appendChild(info);
+        }
+
+        if (lines.length) {
+            const meta = document.createElement('div');
+            meta.className = 'zh-share-meta-lines';
+            lines.forEach(line => {
+                const item = document.createElement('div');
+                item.className = 'zh-share-meta-line';
+                item.textContent = line;
+                meta.appendChild(item);
+            });
+            card.appendChild(meta);
+        }
+        return card;
+    }
+
+    function getShareRichSource(root) {
+        return root?.querySelector?.('.RichContent-inner, .Post-RichTextContainer .RichText, .Post-RichTextContainer, .RichText.ztext, .RichText, [itemprop="text"]') || null;
+    }
+
+    function buildShareBody(root) {
+        const source = getShareRichSource(root);
+        if (!source) return null;
+        const rich = document.createElement('div');
+        rich.className = 'RichContent';
+        const inner = document.createElement('div');
+        inner.className = 'RichContent-inner';
+        const clone = cleanupZeroLossShareClone(source.cloneNode(true));
+        if (clone.classList.contains('RichContent-inner')) {
+            Array.from(clone.childNodes).forEach(node => inner.appendChild(node));
+        } else {
+            inner.appendChild(clone);
+        }
+        rich.appendChild(inner);
+        cleanupZeroLossShareClone(rich);
+        return rich;
+    }
+
+    function getShareActionLabels(root) {
+        const action = root?.matches?.('.ContentItem-actions, .RichContent-actions')
+            ? root
+            : root?.querySelector?.('.ContentItem-actions, .RichContent-actions');
+        if (!action) return [];
+        const blocked = /^(反对|更多|分享|收起|展开|举报|添加评论|写评论)$/;
+        const labels = Array.from(action.querySelectorAll('button, a, [aria-label]'))
+            .map(el => normalizeShareText(el.innerText || el.getAttribute('aria-label') || el.textContent))
+            .filter(text => text && !blocked.test(text) && text.length <= 24);
+        return Array.from(new Set(labels)).slice(0, 6);
+    }
+
+    function buildShareActions(root) {
+        const labels = getShareActionLabels(root);
+        if (!labels.length) return null;
+        const box = document.createElement('div');
+        box.className = 'zh-share-actions';
+        labels.forEach(label => {
+            const chip = document.createElement('span');
+            chip.className = 'zh-share-action-chip';
+            chip.textContent = label;
+            box.appendChild(chip);
+        });
+        return box;
+    }
+
+    function buildShareTime(root) {
+        const time = root?.querySelector?.('.ContentItem-time, .Post-Sub, time');
+        if (!time) return null;
+        const clone = cleanupZeroLossShareClone(time.cloneNode(true));
+        clone.classList.add('ContentItem-time');
+        return clone;
+    }
+
+    function appendShareTitle(container, text) {
+        const title = document.createElement('h1');
+        title.className = 'zh-share-question-title';
+        title.textContent = normalizeShareText(text) || '知乎内容';
+        container.appendChild(title);
+        return title.textContent;
+    }
+
+    function getZeroLossShareContent() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) throw new Error('请先进入沉浸模式。');
+
+        const container = document.createElement('div');
+        container.className = 'zh-share-content';
+        let title = document.title || '知乎分享';
+        let sourceType = '';
+        let contentRoot = null;
+        let actionRoot = null;
+
+        if (isPostPage()) {
+            const article = (_articleNode && _articleNode.closest('#immersive-wrapper'))
+                ? _articleNode
+                : wrapper.querySelector('.Post-Main.Post-NormalMain, .Post-Main, .Post-RichTextContainer');
+            if (!article) throw new Error('未找到可分享的文章正文。');
+            contentRoot = article;
+            actionRoot = (_actionBarNode && _actionBarNode.closest('#immersive-wrapper'))
+                ? _actionBarNode
+                : wrapper.querySelector('.ContentItem-actions, .RichContent-actions');
+            title = appendShareTitle(container, article.querySelector('h1, .Post-Title')?.innerText || document.title || '知乎文章');
+            sourceType = 'article';
+        } else if (isQuestionPage()) {
+            if (_questionState.view !== 'answer') throw new Error('请先打开某个回答正文，再使用零损分享。');
+            const answerView = wrapper.querySelector('.zh-question-answer-view');
+            if (!answerView) throw new Error('未找到可分享的回答正文。');
+            contentRoot = answerView;
+            actionRoot = answerView;
+            title = appendShareTitle(container, wrapper.querySelector('.zh-question-title, h1')?.innerText || document.title || '知乎回答');
+            sourceType = 'answer';
+        } else {
+            throw new Error('零损分享目前只支持 /p 文章页和回答正文页。');
+        }
+
+        const authorCard = buildShareAuthorCard(contentRoot);
+        if (authorCard) container.appendChild(authorCard);
+        const body = buildShareBody(contentRoot);
+        if (!body) throw new Error('未找到可分享的正文。');
+        container.appendChild(body);
+        const time = buildShareTime(contentRoot);
+        if (time) container.appendChild(time);
+        const actions = buildShareActions(actionRoot || contentRoot);
+        if (actions) container.appendChild(actions);
+
+        const source = document.createElement('div');
+        source.className = 'zh-share-source';
+        source.textContent = `来源：${location.href}`;
+        container.appendChild(source);
+        return { title, sourceType, node: container };
+    }
+
+    function blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error('图片转 dataURL 失败'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    function gmFetchBlob(url) {
+        return new Promise((resolve, reject) => {
+            const xhr = getUserscriptXHR();
+            if (!xhr) {
+                fetch(url, { credentials: 'include', cache: 'force-cache' })
+                    .then(res => res.ok ? res.blob() : Promise.reject(new Error(`HTTP ${res.status}`)))
+                    .then(resolve)
+                    .catch(reject);
+                return;
+            }
+
+            xhr({
+                method: 'GET',
+                url,
+                timeout: 30000,
+                anonymous: false,
+                responseType: 'blob',
+                headers: { 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' },
+                onload: res => {
+                    if (res.status < 200 || res.status >= 300) {
+                        reject(new Error(`HTTP ${res.status}`));
+                        return;
+                    }
+                    if (res.response instanceof Blob) {
+                        resolve(res.response);
+                        return;
+                    }
+                    reject(new Error('图片响应不是 Blob'));
+                },
+                onerror: err => reject(new Error(`图片抓取失败：${err?.error || err?.message || '未知错误'}`)),
+                ontimeout: () => reject(new Error('图片抓取超时'))
+            });
+        });
+    }
+
+    async function fetchShareImageDataURL(src) {
+        if (!src || /^(data:|blob:)/i.test(src)) return src;
+        const absolute = new URL(src, location.href).href;
+        if (_shareImageDataUrlCache.has(absolute)) return _shareImageDataUrlCache.get(absolute);
+        const promise = gmFetchBlob(absolute).then(blobToDataURL);
+        _shareImageDataUrlCache.set(absolute, promise);
+        return promise;
+    }
+
+    function getShareSrcsetFirstUrl(srcset) {
+        return String(srcset || '').split(',')[0]?.trim().split(/\s+/)[0] || '';
+    }
+
+    function buildShareImagePlaceholderDataURL(width = 640, height = 360) {
+        const rawW = Number.parseFloat(width);
+        const rawH = Number.parseFloat(height);
+        const w = Math.max(80, Math.round(Number.isFinite(rawW) ? rawW : 640));
+        const h = Math.max(50, Math.round(Number.isFinite(rawH) ? rawH : Math.min(w * 0.56, 360)));
+        const label = w < 140 || h < 80 ? '图' : '图片未能内嵌';
+        const fontSize = w < 140 || h < 80 ? 13 : 15;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" rx="8" fill="#f0ebe1"/><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="8" fill="none" stroke="#d4cbb8" stroke-dasharray="8 8"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="${fontSize}" fill="#736b58">${label}</text></svg>`;
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    }
+
+    function getImageFallbackSize(img) {
+        const rect = img.getBoundingClientRect?.();
+        return {
+            width: Number(img.getAttribute('width')) || Math.round(rect?.width || 0) || (img.classList?.contains('Avatar') ? 50 : 640),
+            height: Number(img.getAttribute('height')) || Math.round(rect?.height || 0) || (img.classList?.contains('Avatar') ? 50 : 360)
+        };
+    }
+
+    async function inlineShareImages(root, options = {}) {
+        const stats = { replaced: 0 };
+        const replaceImgWithPlaceholder = img => {
+            const size = getImageFallbackSize(img);
+            img.setAttribute('src', buildShareImagePlaceholderDataURL(size.width, size.height));
+            img.setAttribute('alt', `${img.getAttribute('alt') || '图片'}（PNG 导出时未能内嵌，已用占位图替换）`);
+            stats.replaced++;
+        };
+
+        root.querySelectorAll('source').forEach(el => el.remove());
+        const imgs = Array.from(root.querySelectorAll('img'));
+        const tasks = imgs.map(img => async () => {
+            const src = img.getAttribute('src') || getShareSrcsetFirstUrl(img.getAttribute('srcset')) || img.src;
+            img.removeAttribute('srcset');
+            img.removeAttribute('loading');
+            img.removeAttribute('decoding');
+            img.removeAttribute('crossorigin');
+            if (!src) {
+                if (options.strict) replaceImgWithPlaceholder(img);
+                return;
+            }
+            try {
+                const dataUrl = await fetchShareImageDataURL(src);
+                if (dataUrl) img.setAttribute('src', dataUrl);
+            } catch (err) {
+                console.warn('知乎零损分享：图片内嵌失败', src, err);
+                if (options.strict) {
+                    replaceImgWithPlaceholder(img);
+                } else {
+                    img.setAttribute('src', src);
+                }
+            }
+        });
+
+        for (let i = 0; i < tasks.length; i += 4) {
+            await Promise.all(tasks.slice(i, i + 4).map(task => task()));
+        }
+
+        const svgImages = Array.from(root.querySelectorAll('image'));
+        await Promise.all(svgImages.map(async image => {
+            const href = image.getAttribute('href') || image.getAttribute('xlink:href') || image.getAttributeNS?.('http://www.w3.org/1999/xlink', 'href');
+            if (!href || /^(data:|blob:|#)/i.test(href)) return;
+            try {
+                const dataUrl = await fetchShareImageDataURL(href);
+                image.setAttribute('href', dataUrl);
+                image.setAttributeNS?.('http://www.w3.org/1999/xlink', 'href', dataUrl);
+            } catch (err) {
+                console.warn('知乎零损分享：SVG 图片内嵌失败', href, err);
+                if (options.strict) {
+                    const dataUrl = buildShareImagePlaceholderDataURL(image.getAttribute('width'), image.getAttribute('height'));
+                    image.setAttribute('href', dataUrl);
+                    image.setAttributeNS?.('http://www.w3.org/1999/xlink', 'href', dataUrl);
+                    stats.replaced++;
+                }
+            }
+        }));
+
+        if (options.strict) {
+            root.querySelectorAll('a[href]').forEach(a => a.removeAttribute('href'));
+            root.querySelectorAll('img').forEach(img => {
+                const src = img.getAttribute('src') || '';
+                if (src && !/^data:/i.test(src)) replaceImgWithPlaceholder(img);
+            });
+            root.querySelectorAll('image').forEach(image => {
+                const href = image.getAttribute('href') || image.getAttribute('xlink:href') || '';
+                if (href && !/^data:/i.test(href)) {
+                    const dataUrl = buildShareImagePlaceholderDataURL(image.getAttribute('width'), image.getAttribute('height'));
+                    image.setAttribute('href', dataUrl);
+                    image.setAttributeNS?.('http://www.w3.org/1999/xlink', 'href', dataUrl);
+                    stats.replaced++;
+                }
+            });
+        }
+        return stats;
+    }
+
+    function stripShareImagesForPng(root) {
+        let removed = 0;
+        root.querySelectorAll('a[href]').forEach(a => a.removeAttribute('href'));
+        root.querySelectorAll('picture, source').forEach(el => el.remove());
+        root.querySelectorAll('img, image').forEach(el => {
+            removed++;
+            el.remove();
+        });
+        root.querySelectorAll('figure').forEach(figure => {
+            if (!normalizeShareText(figure.innerText || figure.textContent)) figure.remove();
+        });
+        root.querySelectorAll('a, span').forEach(el => {
+            if (!el.children.length && !normalizeShareText(el.textContent)) el.remove();
+        });
+        root.querySelectorAll('p, div').forEach(el => {
+            if (el.classList?.contains('zh-share-content') || el.classList?.contains('zh-share-page')) return;
+            if (!el.children.length && !normalizeShareText(el.textContent)) el.remove();
+        });
+        return { removed };
+    }
+
+    async function renderZeroLossSharePage(contentNode, options = {}) {
+        const frame = document.createElement('div');
+        frame.style.cssText = 'position:absolute;left:-12000px;top:0;width:900px;visibility:hidden;pointer-events:none;';
+        const style = document.createElement('style');
+        style.textContent = getZeroLossShareCSS();
+        const root = document.createElement('div');
+        root.className = 'zh-share-svg-root';
+        const page = document.createElement('div');
+        page.className = 'zh-share-page';
+        page.appendChild(contentNode);
+        frame.appendChild(style);
+        root.appendChild(page);
+        frame.appendChild(root);
+        document.body.appendChild(frame);
+        let imageFallbackCount = 0;
+        let imageRemovedCount = 0;
+        if (options.stripImages) {
+            const stripStats = stripShareImagesForPng(page);
+            imageRemovedCount = stripStats.removed || 0;
+            if (imageRemovedCount > 0) {
+                const note = document.createElement('div');
+                note.className = 'zh-share-warning';
+                note.textContent = `PNG 长图说明：为保证浏览器稳定导出，已忽略 ${imageRemovedCount} 张图片；HTML/SVG 导出通常可保留原图链接。`;
+                const source = page.querySelector('.zh-share-source');
+                if (source?.parentNode) source.parentNode.insertBefore(note, source);
+                else page.appendChild(note);
+            }
+        } else if (options.inlineImages) {
+            const imageStats = await inlineShareImages(page, { strict: false });
+            imageFallbackCount = imageStats?.replaced || 0;
+        }
+        const width = 900;
+        const height = Math.max(640, Math.ceil(root.scrollHeight + 2));
+        const html = page.outerHTML;
+        const xhtml = serializeZeroLossShareXHTML(page);
+        frame.remove();
+        return { width, height, html, xhtml, imageFallbackCount, imageRemovedCount };
+    }
+
+    function serializeZeroLossShareXHTML(pageNode) {
+        const root = document.createElement('div');
+        root.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        root.className = 'zh-share-svg-root';
+        const style = document.createElement('style');
+        style.textContent = getZeroLossShareCSS();
+        root.appendChild(style);
+        root.appendChild(pageNode.cloneNode(true));
+        return new XMLSerializer().serializeToString(root);
+    }
+
+    function buildZeroLossShareHTML(page) {
+        return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知乎零损分享 - 纯净阅读版</title>
+<style>${getZeroLossShareCSS()}</style>
+</head>
+<body>${page.html}</body>
+</html>`;
+    }
+
+    function buildZeroLossShareSVG(page) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${page.width}" height="${page.height}" viewBox="0 0 ${page.width} ${page.height}">
+<foreignObject width="100%" height="100%">
+${page.xhtml}
+</foreignObject>
+</svg>`;
+    }
+
+    function renderSvgToPngBlob(svgText, width, height) {
+        return new Promise((resolve, reject) => {
+            const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+            const img = new Image();
+            img.decoding = 'async';
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                try {
+                    const maxSide = 30000;
+                    const preferredScale = Math.min(window.devicePixelRatio || 1, 2);
+                    const scale = Math.min(preferredScale, maxSide / Math.max(width, height));
+                    if (!Number.isFinite(scale) || scale <= 0) throw new Error('画布尺寸异常');
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.ceil(width * scale));
+                    canvas.height = Math.max(1, Math.ceil(height * scale));
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) throw new Error('无法创建 Canvas');
+                    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    canvas.toBlob(blob => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('PNG Blob 生成失败'));
+                    }, 'image/png');
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('SVG 渲染为 PNG 失败'));
+            };
+            img.src = url;
+        });
+    }
+
+    async function runZeroLossShare() {
+        try {
+            const content = getZeroLossShareContent();
+            const format = ['html', 'svg', 'png'].includes(config.shareExportFormat) ? config.shareExportFormat : 'svg';
+            if (format === 'png') showCollectOverlay('正在准备 PNG 长图...');
+            const page = await renderZeroLossSharePage(content.node, {
+                inlineImages: format === 'svg',
+                stripImages: format === 'png'
+            });
+            const filename = `${sanitizeShareFilename(content.title || content.sourceType)}.${format}`;
+            if (format === 'html') {
+                downloadTextFile(filename, buildZeroLossShareHTML(page), 'text/html;charset=utf-8');
+            } else if (format === 'png') {
+                showCollectOverlay('正在渲染 PNG 长图...');
+                const svgText = buildZeroLossShareSVG(page);
+                const pngBlob = await renderSvgToPngBlob(svgText, page.width, page.height);
+                downloadBlobFile(filename, pngBlob);
+            } else {
+                downloadTextFile(filename, buildZeroLossShareSVG(page), 'image/svg+xml;charset=utf-8');
+            }
+            const imageTip = page.imageRemovedCount ? `（已忽略 ${page.imageRemovedCount} 张图片）` : (page.imageFallbackCount ? `（${page.imageFallbackCount} 张图片已占位）` : '');
+            showCollectOverlay(`零损分享已导出：${filename}${imageTip}`);
+            setTimeout(removeCollectOverlay, 1600);
+        } catch (err) {
+            removeCollectOverlay();
+            alert(`零损分享失败：${err.message}`);
+        }
+    }
+
+    function showExpressionBookModal() {
+        if (document.getElementById('zh-expression-book-modal')) return;
+        const items = loadExpressionBook();
+        const rows = items.slice(0, 80).map((item, index) => `
+            <div style="border:1px solid var(--zh-border);background:var(--zh-quote);border-radius:4px;padding:10px;margin-bottom:10px;">
+                <div style="font-weight:bold;color:var(--zh-accent);">${index + 1}. ${escapeHTML(item.selectedText || '')}</div>
+                <div style="font-size:13px;opacity:.75;">${escapeHTML(item.title || '')} · ${item.savedAt ? escapeHTML(new Date(item.savedAt).toLocaleString()) : ''}</div>
+                <div style="margin-top:8px;"><strong>原文：</strong>${escapeHTML((item.sourceText || '').slice(0, 220))}</div>
+                <div style="margin-top:6px;"><strong>译文：</strong>${escapeHTML((item.translatedText || '暂无译文').slice(0, 220))}</div>
+                ${item.annotation ? `<div style="margin-top:6px;color:var(--zh-accent);"><strong>AI批注：</strong>${escapeHTML(item.annotation)}</div>` : ''}
+            </div>
+        `).join('');
+        const modal = createModal('zh-expression-book-modal', '表达收藏本', `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <button id="zh-expr-copy-md" class="zh-inline-btn">复制 Markdown</button>
+                <button id="zh-expr-download-md" class="zh-inline-btn">下载 Markdown</button>
+                <button id="zh-expr-download-json" class="zh-inline-btn">下载 JSON</button>
+                <button id="zh-expr-clear" class="zh-inline-btn">清空</button>
+            </div>
+            <div style="font-size:13px;opacity:.75;margin-bottom:12px;">共 ${items.length} 条。列表只预览前 80 条，导出包含全部。</div>
+            <div>${rows || '<div style="opacity:.7;">表达本还是空的。划词右键可以加入。</div>'}</div>
+        `);
+        document.getElementById('zh-expr-copy-md')?.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(formatExpressionBookMarkdown(loadExpressionBook()));
+            alert('Markdown 已复制。');
+        });
+        document.getElementById('zh-expr-download-md')?.addEventListener('click', () => {
+            downloadTextFile(`zhihu-expression-book-${new Date().toISOString().slice(0, 10)}.md`, formatExpressionBookMarkdown(loadExpressionBook()), 'text/markdown;charset=utf-8');
+        });
+        document.getElementById('zh-expr-download-json')?.addEventListener('click', () => {
+            downloadTextFile(`zhihu-expression-book-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadExpressionBook(), null, 2), 'application/json;charset=utf-8');
+        });
+        document.getElementById('zh-expr-clear')?.addEventListener('click', () => {
+            if (!confirm('确认清空表达本？')) return;
+            saveExpressionBook([]);
+            modal.remove();
+            showExpressionBookModal();
+        });
+    }
+
+    function loadRadarReportBook() {
+        try {
+            const raw = localStorage.getItem(RADAR_REPORT_BOOK_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：信息雷达报告本读取失败', err);
+            return [];
+        }
+    }
+
+    function saveRadarReportBook(items) {
+        const safeItems = (Array.isArray(items) ? items : []).slice(0, RADAR_REPORT_BOOK_MAX);
+        try {
+            localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems));
+            return true;
+        } catch (err) {
+            try {
+                localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(RADAR_REPORT_BOOK_MAX / 2))));
+                return true;
+            } catch (innerErr) {
+                console.warn('知乎沉浸式阅读：信息雷达报告本写入失败', innerErr);
+                return false;
+            }
+        }
+    }
+
+    function getRadarReportSystemPrompt() {
+        return `你是一个信息流过滤助手。目标不是强行提炼知识，而是诚实地说明：
+这条内容是什么、读完应该带走什么感觉或印象。
+
+archetype 只能选：trick / tutorial / analysis / opinion / trend / noise。
+oneliner：像跟朋友说“我刚看了篇文章说...”那样自然，不要学术腔。
+impression：读完带走的感觉，可以是某个直觉、某种意识、某个“哦原来”。
+depth：只能选 skim / read / study / skip。
+relevance：0-100。
+如果内容不命中兴趣但质量高，offTagHighlight=true，并说明 highlightReason。
+不要强行写可迁移场景、机制、方法论。
+
+请输出严格 JSON，不要 Markdown，不要代码块，不要多余文字。字段：
+archetype, oneliner, impression, depth, relevance, offTagHighlight, highlightReason, tags。`;
+    }
+
+    function normalizeRadarTags(value) {
+        return normalizeWikiTags(value).slice(0, 4);
+    }
+
+    function normalizeRadarDepth(value) {
+        const depth = String(value || '').trim();
+        return ['skim', 'read', 'study', 'skip'].includes(depth) ? depth : 'skim';
+    }
+
+    function normalizeRadarArchetype(value) {
+        const archetype = String(value || '').trim();
+        return ['trick', 'tutorial', 'analysis', 'opinion', 'trend', 'noise'].includes(archetype) ? archetype : 'opinion';
+    }
+
+    function getCurrentRadarSource() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) throw new Error('请先进入沉浸模式。');
+
+        if (_questionState.view === 'list') {
+            throw new Error('请先从回答列表中选择一个回答，再生成信息雷达报告。');
+        }
+
+        const isAnswer = _questionState.view === 'answer' || isAnswerUrl();
+        const sourceType = isAnswer ? 'answer' : 'article';
+        const answer = isAnswer ? _questionState.answers[_questionState.currentIndex] : null;
+        const title = (isAnswer
+            ? (_questionState.questionTitle || document.querySelector('#immersive-wrapper h1, h1')?.innerText)
+            : (document.querySelector('#immersive-wrapper h1, h1')?.innerText || document.title || '知乎文章')
+        || '知乎内容').replace(/\s+/g, ' ').trim();
+
+        const articleRoot = wrapper.querySelector('.Post-RichTextContainer .RichText, .Post-RichTextContainer, .Post-RichText, .RichText.ztext, .RichText') || wrapper;
+        const root = isAnswer
+            ? (document.querySelector('#immersive-wrapper .zh-question-answer-view') || wrapper)
+            : articleRoot;
+        const sourceText = normalizeText(answer?.text || root?.innerText || root?.textContent || '');
+        if (!sourceText || sourceText.length < 20) throw new Error('当前内容太短，无法生成信息雷达报告。');
+
+        const url = (answer?.key && /^https?:\/\//.test(answer.key)) ? answer.key : location.href;
+        return {
+            sourceType,
+            title,
+            url,
+            sourceText,
+            sourceKey: `${sourceType}::${stableHash(url)}::${stableHash(sourceText)}`
+        };
+    }
+
+    function findRadarReportForSource(source) {
+        const items = loadRadarReportBook();
+        return items.find(item => item.sourceKey === source.sourceKey)
+            || items.find(item => item.url === source.url && item.sourceType === source.sourceType);
+    }
+
+    function buildRadarReportUserPrompt(source) {
+        const tags = String(config.radarInterestTags || '').trim();
+        return [
+            `页面类型：${source.sourceType}`,
+            `标题：${source.title}`,
+            `来源 URL：${source.url}`,
+            tags ? `用户兴趣标签：${tags}` : '用户兴趣标签：未设置',
+            `正文前 6000 字：\n${source.sourceText.slice(0, 6000)}`
+        ].join('\n\n');
+    }
+
+    function fallbackRadarReport(raw, source) {
+        const text = String(raw || '').replace(/\s+/g, ' ').trim();
+        return {
+            archetype: 'opinion',
+            oneliner: text.slice(0, 120) || source.sourceText.slice(0, 120) || '这条内容需要人工判断。',
+            impression: '这条内容需要人工判断是否值得保留。',
+            depth: 'skim',
+            relevance: 50,
+            offTagHighlight: false,
+            highlightReason: '',
+            tags: [],
+            rawJson: raw || ''
+        };
+    }
+
+    function normalizeRadarReport(data, source, raw = '') {
+        const parsed = data && typeof data === 'object' ? data : fallbackRadarReport(raw, source);
+        const relevance = Number(parsed.relevance);
+        return {
+            id: `radar-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            savedAt: new Date().toISOString(),
+            url: source.url,
+            title: source.title,
+            sourceType: source.sourceType,
+            sourceText: source.sourceText,
+            sourceKey: source.sourceKey,
+            archetype: normalizeRadarArchetype(parsed.archetype),
+            oneliner: String(parsed.oneliner || fallbackRadarReport(raw, source).oneliner).replace(/\s+/g, ' ').trim(),
+            impression: String(parsed.impression || '这条内容需要人工判断是否值得保留。').replace(/\s+/g, ' ').trim(),
+            depth: normalizeRadarDepth(parsed.depth),
+            relevance: Number.isFinite(relevance) ? Math.max(0, Math.min(100, Math.round(relevance))) : 50,
+            offTagHighlight: !!parsed.offTagHighlight,
+            highlightReason: String(parsed.highlightReason || '').replace(/\s+/g, ' ').trim(),
+            tags: normalizeRadarTags(parsed.tags),
+            rawJson: raw || JSON.stringify(parsed)
+        };
+    }
+
+    async function generateRadarReport(source, onProgress = null) {
+        if (!config.apiKey) throw new Error('请先在设置里配置 API Key。');
+        onProgress?.({ phase: 'prepare', message: '准备信息雷达输入...' });
+        const messages = [
+            { role: 'system', content: getRadarReportSystemPrompt() },
+            { role: 'user', content: buildRadarReportUserPrompt(source) }
+        ];
+        onProgress?.({ phase: 'request', message: '正在发送 API 请求...' });
+        const raw = await callLLMMessages(messages);
+        onProgress?.({ phase: 'response', message: '已收到 API 响应，正在解析 JSON...' });
+        const parsed = parseJSONFromText(raw);
+        const report = normalizeRadarReport(parsed, source, raw);
+        onProgress?.({ phase: 'done', message: '信息雷达报告已生成。' });
+        return report;
+    }
+
+    function getRadarJob(source) {
+        return radarJobState.get(source.sourceKey) || null;
+    }
+
+    function setRadarJob(source, patch) {
+        const prev = getRadarJob(source) || {
+            sourceKey: source.sourceKey,
+            status: 'idle',
+            phase: '',
+            message: '',
+            startedAt: '',
+            finishedAt: '',
+            report: null,
+            error: '',
+            promise: null
+        };
+        const next = { ...prev, ...patch };
+        radarJobState.set(source.sourceKey, next);
+        return next;
+    }
+
+    function startRadarReportJob(source) {
+        const existing = getRadarJob(source);
+        if (existing?.status === 'running' && existing.promise) return existing;
+        const startedAt = new Date().toISOString();
+        const job = setRadarJob(source, {
+            status: 'running',
+            phase: 'prepare',
+            message: '准备信息雷达输入...',
+            startedAt,
+            finishedAt: '',
+            report: existing?.report || findRadarReportForSource(source) || null,
+            error: ''
+        });
+        job.promise = generateRadarReport(source, patch => setRadarJob(source, patch))
+            .then(report => {
+                setRadarJob(source, {
+                    status: 'done',
+                    phase: 'done',
+                    message: '报告已生成，确认后可保存。',
+                    finishedAt: new Date().toISOString(),
+                    report,
+                    error: ''
+                });
+                return report;
+            })
+            .catch(err => {
+                setRadarJob(source, {
+                    status: 'error',
+                    phase: 'error',
+                    message: `生成失败：${err.message}`,
+                    finishedAt: new Date().toISOString(),
+                    error: err.message
+                });
+                throw err;
+            });
+        radarJobState.set(source.sourceKey, job);
+        return job;
+    }
+
+    function formatRadarReportMarkdown(report) {
+        if (!report) return '';
+        const tags = (report.tags || []).map(tag => `#${String(tag).replace(/^#/, '').replace(/\s+/g, '_')}`).join(' ');
+        const lines = [
+            `### [${report.archetype || 'opinion'}] ${report.title || '知乎内容'}`,
+            `> ${report.impression || report.oneliner || ''}`,
+            '',
+            `📖 ${report.depth || 'skim'} · ⭐ ${Number.isFinite(Number(report.relevance)) ? report.relevance : 50} · 🏷 ${tags || '无'} · 🔗 ${report.url || ''}`
+        ];
+        if (report.offTagHighlight && report.highlightReason) {
+            lines.push('', `> Off-tag highlight：${report.highlightReason}`);
+        }
+        return lines.join('\n');
+    }
+
+    function formatRadarReportBookMarkdown(items = loadRadarReportBook()) {
+        const lines = ['# 知乎信息雷达报告本', '', `导出时间：${new Date().toLocaleString()}`, `条目数量：${items.length}`, ''];
+        items.forEach(item => {
+            lines.push(formatRadarReportMarkdown(item), '');
+        });
+        return lines.join('\n');
+    }
+
+    function saveRadarReport(report) {
+        if (!report) return false;
+        const items = loadRadarReportBook();
+        const filtered = items.filter(item => item.sourceKey !== report.sourceKey);
+        filtered.unshift({ ...report, savedAt: new Date().toISOString() });
+        return saveRadarReportBook(filtered);
+    }
+
+    function renderRadarReportHTML(report) {
+        if (!report) return '<div style="opacity:.75;">当前内容还没有生成信息雷达报告。</div>';
+        const tags = (report.tags || []).map(tag => `<span style="display:inline-block;margin:2px 4px 2px 0;color:var(--zh-accent);">#${escapeHTML(tag)}</span>`).join('');
+        return `
+            <div style="border:1px solid var(--zh-border);background:var(--zh-quote);border-radius:4px;padding:12px 14px;margin-bottom:12px;">
+                <div style="font-weight:bold;color:var(--zh-accent);margin-bottom:6px;">[${escapeHTML(report.archetype)}] ${escapeHTML(report.oneliner || report.title)}</div>
+                <blockquote style="margin:8px 0;padding-left:12px;border-left:3px solid var(--zh-accent);">${escapeHTML(report.impression || '')}</blockquote>
+                <div style="font-size:13px;opacity:.82;">📖 ${escapeHTML(report.depth)} · ⭐ ${escapeHTML(report.relevance)} · ${tags || '无标签'}</div>
+                ${report.offTagHighlight && report.highlightReason ? `<div style="margin-top:8px;font-size:13px;"><strong>Off-tag highlight：</strong>${escapeHTML(report.highlightReason)}</div>` : ''}
+                <div style="margin-top:8px;font-size:12px;opacity:.72;word-break:break-all;">${escapeHTML(report.url || '')}</div>
+            </div>
+        `;
+    }
+
+    function showRadarReportBookModal() {
+        if (document.getElementById('zh-radar-book-modal')) return;
+        const items = loadRadarReportBook();
+        const rows = items.slice(0, 80).map((item, index) => `
+            <div style="border:1px solid var(--zh-border);background:var(--zh-quote);border-radius:4px;padding:10px;margin-bottom:10px;">
+                <div style="font-weight:bold;color:var(--zh-accent);">${index + 1}. [${escapeHTML(item.archetype || '')}] ${escapeHTML(item.oneliner || item.title || '')}</div>
+                <div style="margin-top:6px;">${escapeHTML(item.impression || '')}</div>
+                <div style="font-size:13px;opacity:.75;margin-top:6px;">${escapeHTML(item.depth || 'skim')} · ⭐ ${escapeHTML(item.relevance ?? 50)} · ${escapeHTML(item.savedAt ? new Date(item.savedAt).toLocaleString() : '')}</div>
+            </div>
+        `).join('');
+        const modal = createModal('zh-radar-book-modal', '信息雷达报告本', `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <button id="zh-radar-copy-md" class="zh-inline-btn">复制 Markdown</button>
+                <button id="zh-radar-download-md" class="zh-inline-btn">下载 Markdown</button>
+                <button id="zh-radar-download-json" class="zh-inline-btn">下载 JSON</button>
+                <button id="zh-radar-clear" class="zh-inline-btn">清空</button>
+            </div>
+            <div style="font-size:13px;opacity:.75;margin-bottom:12px;">共 ${items.length} 条。列表只预览前 80 条，导出包含全部。</div>
+            <div>${rows || '<div style="opacity:.7;">信息雷达报告本还是空的。点击 R 可以生成当前文章/回答报告。</div>'}</div>
+        `);
+        document.getElementById('zh-radar-copy-md')?.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(formatRadarReportBookMarkdown(loadRadarReportBook()));
+            alert('Markdown 已复制。');
+        });
+        document.getElementById('zh-radar-download-md')?.addEventListener('click', () => {
+            downloadTextFile(`zhihu-radar-report-book-${new Date().toISOString().slice(0, 10)}.md`, formatRadarReportBookMarkdown(loadRadarReportBook()), 'text/markdown;charset=utf-8');
+        });
+        document.getElementById('zh-radar-download-json')?.addEventListener('click', () => {
+            downloadTextFile(`zhihu-radar-report-book-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadRadarReportBook(), null, 2), 'application/json;charset=utf-8');
+        });
+        document.getElementById('zh-radar-clear')?.addEventListener('click', () => {
+            if (!confirm('确认清空信息雷达报告本？')) return;
+            saveRadarReportBook([]);
+            modal.remove();
+            showRadarReportBookModal();
+        });
+    }
+
+    function showRadarReportModal() {
+        if (document.getElementById('zh-radar-report-modal')) return;
+        let source;
+        try {
+            source = getCurrentRadarSource();
+        } catch (err) {
+            alert(err.message);
+            return;
+        }
+        const savedReport = findRadarReportForSource(source) || null;
+        const existingJob = getRadarJob(source);
+        let currentReport = existingJob?.report || savedReport || null;
+        const modal = createModal('zh-radar-report-modal', '信息雷达报告', `
+            <div id="zh-radar-report-content">${renderRadarReportHTML(currentReport)}</div>
+            <div id="zh-radar-report-status" style="font-size:13px;opacity:.75;margin:8px 0 12px;">${existingJob?.message || (currentReport ? '已读取本地保存的报告，可重新生成。' : '尚未生成报告。')}</div>
+            <div class="zh-radar-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="zh-radar-generate" class="zh-inline-btn zh-radar-generate-btn zh-export-hidden">${currentReport ? '重新生成' : '生成报告'}</button>
+                <button id="zh-radar-save" class="zh-inline-btn">保存到报告本</button>
+                <button id="zh-radar-copy-current" class="zh-inline-btn">复制 Markdown</button>
+                <button id="zh-radar-download-current-md" class="zh-inline-btn">下载 .md</button>
+                <button id="zh-radar-download-current-json" class="zh-inline-btn">下载 .json</button>
+                <button id="zh-radar-open-book" class="zh-inline-btn">打开报告本</button>
+            </div>
+        `);
+        const contentEl = document.getElementById('zh-radar-report-content');
+        const statusEl = document.getElementById('zh-radar-report-status');
+        const generateBtn = document.getElementById('zh-radar-generate');
+        const render = (message = '') => {
+            if (contentEl) contentEl.innerHTML = renderRadarReportHTML(currentReport);
+            if (statusEl && message) statusEl.textContent = message;
+        };
+        const syncFromJob = () => {
+            const job = getRadarJob(source);
+            if (!job) return;
+            currentReport = job.report || currentReport;
+            if (contentEl) contentEl.innerHTML = renderRadarReportHTML(currentReport);
+            if (statusEl) {
+                statusEl.textContent = job.message || (job.status === 'running' ? '正在生成信息雷达报告...' : '');
+                if (job.status === 'error') statusEl.innerHTML = `<span style="color:red">${escapeHTML(job.message || job.error || '生成失败')}</span>`;
+            }
+            if (generateBtn) {
+                generateBtn.disabled = job.status === 'running';
+                generateBtn.textContent = job.status === 'running' ? '生成中...' : (currentReport ? '重新生成' : '生成报告');
+            }
+        };
+        syncFromJob();
+        const radarSyncTimer = setInterval(() => {
+            if (!document.getElementById('zh-radar-report-modal')) {
+                clearInterval(radarSyncTimer);
+                return;
+            }
+            syncFromJob();
+        }, 500);
+
+        generateBtn?.addEventListener('click', async () => {
+            const job = startRadarReportJob(source);
+            syncFromJob();
+            try {
+                currentReport = await job.promise;
+                render('报告已生成，确认后可保存。');
+            } catch (err) {
+                if (statusEl) statusEl.innerHTML = `<span style="color:red">生成失败：${escapeHTML(err.message)}</span>`;
+            } finally {
+                syncFromJob();
+            }
+        });
+
+        document.getElementById('zh-radar-save')?.addEventListener('click', () => {
+            if (!currentReport) return alert('请先生成报告。');
+            if (saveRadarReport(currentReport)) {
+                showCollectOverlay('信息雷达报告已保存。');
+                setTimeout(removeCollectOverlay, 1400);
+                render('报告已保存到本地报告本。');
+            } else {
+                alert('报告保存失败，可能是 localStorage 空间不足。');
+            }
+        });
+        document.getElementById('zh-radar-copy-current')?.addEventListener('click', async () => {
+            if (!currentReport) return alert('请先生成报告。');
+            await navigator.clipboard.writeText(formatRadarReportMarkdown(currentReport));
+            alert('Markdown 已复制。');
+        });
+        document.getElementById('zh-radar-download-current-md')?.addEventListener('click', () => {
+            if (!currentReport) return alert('请先生成报告。');
+            downloadTextFile(`zhihu-radar-report-${new Date().toISOString().slice(0, 10)}.md`, formatRadarReportMarkdown(currentReport), 'text/markdown;charset=utf-8');
+        });
+        document.getElementById('zh-radar-download-current-json')?.addEventListener('click', () => {
+            if (!currentReport) return alert('请先生成报告。');
+            downloadTextFile(`zhihu-radar-report-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(currentReport, null, 2), 'application/json;charset=utf-8');
+        });
+        document.getElementById('zh-radar-open-book')?.addEventListener('click', () => {
+            modal.remove();
+            showRadarReportBookModal();
+        });
+    }
+
+    function showSelectionContextMenu(event, selectedText, contextText) {
+        removeSelectionContextMenu();
+
+        const menu = document.createElement('div');
+        menu.id = 'zh-selection-context-menu';
+        menu.className = 'zh-context-menu';
+        menu.innerHTML = `
+            <div class="zh-context-menu-item" id="zh-context-analyze">🔎 AI 划词解析</div>
+            <div class="zh-context-menu-item" id="zh-context-save-expression">★ 加入表达本</div>
+        `;
+        document.body.appendChild(menu);
+
+        const maxLeft = window.innerWidth - menu.offsetWidth - 8;
+        const maxTop = window.innerHeight - menu.offsetHeight - 8;
+        menu.style.left = `${Math.max(8, Math.min(event.clientX, maxLeft))}px`;
+        menu.style.top = `${Math.max(8, Math.min(event.clientY, maxTop))}px`;
+
+        document.getElementById('zh-context-analyze').addEventListener('click', () => {
+            removeSelectionContextMenu();
+            runSelectionAnalysis(selectedText, contextText);
+        });
+
+        document.getElementById('zh-context-save-expression').addEventListener('click', () => {
+            openSaveExpressionModal(selectedText, contextText);
+            removeSelectionContextMenu();
+        });
+
+        setTimeout(() => {
+            document.addEventListener('click', removeSelectionContextMenu, { once: true });
+        }, 0);
+    }
+
+    async function runSelectionAnalysis(selectedText, contextText) {
+        const modalId = 'zh-selection-modal-' + Date.now();
+        S2translate(modalId, '🔎 划词解析', `<div id="${modalId}-content"><span class="zh-spinner"></span>正在研读并解析，请稍候...</div>`);
+
+        try {
+            const sys = "你是一个专业阅读助手。请针对用户划词部分进行针对性的解释，不超过100字。输出纯文本，不要Markdown语法，尽量精简易懂。回答语言：中文";
+            const usr = `【所在段落上下文】：\n${contextText}\n\n【用户划词需要解析的部分】：\n${selectedText}`;
+            const res = await callLLM(sys, usr);
+            const contentEl = document.getElementById(`${modalId}-content`);
+            if (contentEl) contentEl.innerText = res;
+        } catch (err) {
+            const contentEl = document.getElementById(`${modalId}-content`);
+            if (contentEl) contentEl.innerHTML = `<span style="color:red">解析失败：${err.message}</span>`;
+        }
+    }
+
+    /**
+     * ============================================================================
+     * LLM API 调用引擎 (使用常量区定义的默认配置)
+     * ============================================================================
+     */
+    async function callLLMMessages(messages, customKey = null, customHost = null, customModel = null) {
+        const keyToUse = customKey || config.apiKey;
+        const hostToUse = customHost || config.apiHost;
+        const modelToUse = customModel || config.apiModel;
+
+        if (!keyToUse) throw new Error("API Key 未配置！");
+        const url = hostToUse.endsWith('/') ? hostToUse + 'chat/completions' : hostToUse + '/chat/completions';
+
+        const payload = JSON.stringify({
+            model: modelToUse,
+            messages
+        });
+
+        if (typeof GM_xmlhttpRequest !== 'undefined') {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: url,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${keyToUse}`
+                    },
+                    data: payload,
+                    timeout: 120000,
+                    onload: function(res) {
+                        if (res.status >= 200 && res.status < 300) {
+                            try {
+                                const data = JSON.parse(res.responseText);
+                                if (!data.choices || !data.choices[0]) throw new Error("API 响应格式异常");
+                                resolve(data.choices[0].message.content.trim());
+                            } catch (e) {
+                                reject(new Error("API 数据解析失败: " + e.message));
+                            }
+                        } else {
+                            let errMsg = `HTTP ${res.status}: `;
+                            try {
+                                const errData = JSON.parse(res.responseText);
+                                errMsg += (errData.error?.message || res.statusText);
+                            } catch(e) {
+                                errMsg += res.statusText;
+                            }
+                            reject(new Error(errMsg));
+                        }
+                    },
+                    onerror: function(err) {
+                        reject(new Error("网络或跨域请求失败，请检查网络或 Host 地址"));
+                    },
+                    ontimeout: function() {
+                        reject(new Error("请求超时"));
+                    }
+                });
+            });
+        } else {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keyToUse}` },
+                body: payload
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errText.substring(0, 300)}`);
+            }
+            const data = await res.json();
+            return data.choices[0].message.content.trim();
+        }
+    }
+
+    async function callLLM(systemPrompt, userPrompt, customKey = null, customHost = null, customModel = null) {
+        return callLLMMessages([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ], customKey, customHost, customModel);
+    }
+
+    function isRetryableLLMError(err) {
+        const message = String(err?.message || '');
+        return /HTTP (429|500|502|503|504)|rate|too many|timeout|超时|网络|network/i.test(message);
+    }
+
+    function isContextTooLongError(err) {
+        const message = String(err?.message || '');
+        return /context|token|length|maximum|max|too large|上下文|长度|过长|超限/i.test(message);
+    }
+
+    async function callLLMWithRetry(systemPrompt, userPrompt, options = {}) {
+        const retries = Number.isFinite(options.retries) ? options.retries : 2;
+        let lastErr = null;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                if (options.apiKey || options.apiHost || options.apiModel) {
+                    return await callLLMMessages([
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ], options.apiKey, options.apiHost, options.apiModel);
+                }
+                return await callLLM(systemPrompt, userPrompt);
+            } catch (err) {
+                lastErr = err;
+                if (!isRetryableLLMError(err) || attempt >= retries) break;
+                await sleep(800 * (attempt + 1));
+            }
+        }
+        throw lastErr;
+    }
+
+    function stableHash(text) {
+        const str = String(text || '');
+        let h1 = 0xdeadbeef;
+        let h2 = 0x41c6ce57;
+        for (let i = 0; i < str.length; i++) {
+            const ch = str.charCodeAt(i);
+            h1 = Math.imul(h1 ^ ch, 2654435761);
+            h2 = Math.imul(h2 ^ ch, 1597334677);
+        }
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+        return `${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
+    }
+
+    function loadTranslationCache() {
+        try {
+            const raw = localStorage.getItem(TRANSLATION_CACHE_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
+            return parsed && typeof parsed === 'object'
+                ? { entries: parsed.entries || {}, order: Array.isArray(parsed.order) ? parsed.order : [] }
+                : { entries: {}, order: [] };
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：翻译缓存读取失败', err);
+            return { entries: {}, order: [] };
+        }
+    }
+
+    function saveTranslationCache(cache) {
+        const entries = cache.entries || {};
+        let order = Array.isArray(cache.order) ? cache.order.filter(key => entries[key]) : Object.keys(entries);
+        const seen = new Set();
+        order = order.filter(key => {
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        while (order.length > TRANSLATION_CACHE_MAX) {
+            const oldKey = order.shift();
+            delete entries[oldKey];
+        }
+        try {
+            localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+        } catch (err) {
+            while (order.length > Math.floor(TRANSLATION_CACHE_MAX / 2)) {
+                const oldKey = order.shift();
+                delete entries[oldKey];
+            }
+            try {
+                localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+            } catch (innerErr) {
+                console.warn('知乎沉浸式阅读：翻译缓存写入失败', innerErr);
+            }
+        }
+    }
+
+    function makeTranslationCacheKey(type, content) {
+        return [
+            type,
+            config.apiHost || '',
+            config.apiModel || '',
+            config.targetLang || '',
+            stableHash(content)
+        ].join('::');
+    }
+
+    function normalizeTranslationCacheText(text) {
+        return String(text || '')
+            .replace(/\u200b/g, '')
+            .replace(/图片已隐藏，点击显示/g, '')
+            .replace(/正在高强度研读全文并提取摘要/g, '')
+            .replace(/解析队列中/g, '')
+            .replace(/▶ 点击请求 AI 翻译此段/g, '')
+            .replace(/正在重新生成翻译/g, '')
+            .replace(/重新生成/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function getSummaryCacheContent(fullText) {
+        return normalizeTranslationCacheText(fullText);
+    }
+
+    function getTranslationCache(type, content) {
+        const key = makeTranslationCacheKey(type, content);
+        if (_translationMemoryCache.has(key)) {
+            console.info(`[Zhihu TR Cache] memory hit: ${type}`);
+            return _translationMemoryCache.get(key);
+        }
+        const cache = loadTranslationCache();
+        const value = cache.entries[key]?.value || '';
+        if (value) {
+            _translationMemoryCache.set(key, value);
+            console.info(`[Zhihu TR Cache] localStorage hit: ${type}`);
+        } else {
+            console.info(`[Zhihu TR Cache] miss: ${type} ${stableHash(content)}`);
+        }
+        return value;
+    }
+
+    function setTranslationCache(type, content, value) {
+        if (!value) return;
+        const cache = loadTranslationCache();
+        const key = makeTranslationCacheKey(type, content);
+        cache.entries[key] = { value, savedAt: Date.now() };
+        cache.order = (cache.order || []).filter(item => item !== key);
+        cache.order.push(key);
+        _translationMemoryCache.set(key, value);
+        console.info(`[Zhihu TR Cache] saved: ${type} ${stableHash(content)}`);
+        saveTranslationCache(cache);
+    }
+
+    /**
+     * ============================================================================
+     * 翻译 & 摘要核心逻辑
+     * ============================================================================
+     */
+    async function generateSummary(fullText) {
+        if (_articleSummary) return _articleSummary;
+        const cacheContent = getSummaryCacheContent(fullText);
+        const cached = getTranslationCache('summary', cacheContent);
+        if (cached) {
+            _articleSummary = cached;
+            window._articleSummary = _articleSummary;
+            return _articleSummary;
+        }
+        // .substring(0, 3000);
+        const sys = "你是一个阅读助手。请将文章提炼为100字左右的摘要，主要用于提供上下文。不要有任何多余的客套话。";
+        _articleSummary = await callLLM(sys, fullText);
+        setTranslationCache('summary', cacheContent, _articleSummary);
+        window._articleSummary = _articleSummary;
+        return _articleSummary;
+    }
+
+function getActiveTranslationRoot() {
+    if (_homeState.view === 'list') {
+        alert('请先从首页推荐列表中选择一条内容，再开启翻译。');
+        document.body.classList.remove('zh-show-tr');
+        window._trVisible = false;
+        const translateBtn = document.getElementById('zh-translate-btn');
+        if (translateBtn) translateBtn.classList.remove('zh-btn-active');
+        return null;
+    }
+
+    if (_homeState.view === 'item') {
+        return document.querySelector('#immersive-wrapper .zh-home-card-view .RichText.ztext')
+            || document.querySelector('#immersive-wrapper .zh-home-card-view .RichText')
+            || document.querySelector('#immersive-wrapper .zh-home-card-view .RichContent-inner')
+            || document.querySelector('#immersive-wrapper .zh-home-card-view');
+    }
+
+    if (_questionState.view === 'list') {
+        alert('请先从回答列表中选择一个回答，再开启翻译。');
+        document.body.classList.remove('zh-show-tr');
+        window._trVisible = false;
+        const translateBtn = document.getElementById('zh-translate-btn');
+        if (translateBtn) translateBtn.classList.remove('zh-btn-active');
+        return null;
+    }
+
+    if (_questionState.view === 'answer') {
+        return document.querySelector('#immersive-wrapper');
+    }
+
+    return document.querySelector('#immersive-wrapper') || document.querySelector('.RichText') || _articleNode;
+}
+
+function isTranslatableBlock(node) {
+    if (!(node instanceof Element)) return false;
+    if (node.closest('.zh-tr-card, .zh-question-toolbar, .zh-home-toolbar, .ContentItem-actions, .Reward, .AuthorInfo, .Popover, button, .zh-collect-status, #zh-tools-panel, #immersive-exit-btn')) return false;
+    if (node.querySelector(':scope > .zh-tr-card')) return false;
+    const tag = node.tagName;
+    if (!/^(H1|H2|H3|H4|P|TABLE|UL|OL|BLOCKQUOTE)$/.test(tag)) return false;
+    const text = (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+    const minLen = /^H[1-4]$/.test(tag) ? 2 : 5;
+    if (text.length < minLen) return false;
+    if (/^(上一篇|下一篇|返回|当前第|查看全部回答|再加载)/.test(text)) return false;
+    return true;
+}
+
+function collectTranslationNodes(root) {
+    if (!root) return [];
+    const nodes = [];
+    if (isTranslatableBlock(root)) nodes.push(root);
+    root.querySelectorAll('h1, h2, h3, h4, p, table, ul, ol, blockquote').forEach(node => {
+        if (!isTranslatableBlock(node)) return;
+        if (nodes.some(parent => parent !== node && parent.contains(node))) return;
+        nodes.push(node);
+    });
+    return nodes;
+}
+
+function getNodeCacheContent(node) {
+    const tag = node?.tagName || 'NODE';
+    const text = normalizeTranslationCacheText(node?.innerText || node?.textContent || '');
+    return `${location.hostname}${location.pathname.replace(/\/$/, '')}\n${tag}\n${text}`;
+}
+
+function buildTranslationPrompt(node) {
+    return `CONTENT_TO_TRANSLATE_ONLY_BEGIN\n${node.outerHTML}\nCONTENT_TO_TRANSLATE_ONLY_END`;
+}
+
+function buildTranslationMessages(systemPrompt, node) {
+    const messages = [
+        { role: 'system', content: systemPrompt }
+    ];
+
+    if (_articleSummary) {
+        messages.push({
+            role: 'user',
+            content: `CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE:\n${_articleSummary}\nEND_CONTEXT_SUMMARY`
+        });
+    }
+
+    messages.push({
+        role: 'user',
+        content: buildTranslationPrompt(node)
+    });
+
+    return messages;
+}
+
+function cleanTranslationOutput(content) {
+    let text = String(content || '').trim();
+    text = text
+        .replace(/^\s*(【?Previous Summary】?|Previous Summary|CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE)\s*[:：]?[\s\S]*?(【?Content to Translate】?|Content to Translate|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
+        .replace(/^\s*(【?待翻译内容】?|待翻译内容|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
+        .replace(/\s*(CONTENT_TO_TRANSLATE_ONLY_END|END_CONTEXT_SUMMARY)\s*$/i, '')
+        .trim();
+    return text || content;
+}
+
+function renderParagraphTranslationCard(card, translation, regenerateHandler) {
+    card.innerHTML = sanitizeLLMHTML(translation);
+    const actions = document.createElement('div');
+    actions.className = 'zh-tr-actions';
+    const regenBtn = document.createElement('button');
+    regenBtn.type = 'button';
+    regenBtn.className = 'zh-tr-regen-btn';
+    regenBtn.title = '重新请求 AI 翻译，并覆盖本地翻译缓存';
+    regenBtn.setAttribute('aria-label', '重新生成翻译');
+    regenBtn.innerHTML = ICONS.regenerate;
+    regenBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        regenerateHandler?.();
+    });
+    actions.appendChild(regenBtn);
+    card.appendChild(actions);
+}
+
+async function processTranslation() {
+    // 防止重复生成
+    if (document.getElementById('zh-tr-summary-card')) return;
+
+    // 摘取全文内容
+    const richTextContainer = getActiveTranslationRoot();
+    if (!richTextContainer) return;
+    const initialNodes = collectTranslationNodes(richTextContainer);
+    const fullText = normalizeTranslationCacheText(initialNodes.map(node => node.innerText || node.textContent || '').join('\n\n') || richTextContainer.innerText || '');
+
+    // 1. 优先注入摘要卡片 DOM
+    const summaryCard = document.createElement('div');
+    summaryCard.id = 'zh-tr-summary-card';
+    summaryCard.className = 'zh-tr-card zh-summary-card';
+    summaryCard.innerHTML = `<strong>【AI 全文摘要】</strong><br><span id="zh-sum-text"><span class="zh-spinner"></span>正在高强度研读全文并提取摘要...</span>`;
+    
+    // 兼容性挂载，确保能找到容器
+    if (richTextContainer) richTextContainer.prepend(summaryCard);
+
+    try {
+        // 2. 【修改】改为阻塞模式，等待摘要生成完成
+        const sumText = await generateSummary(fullText);
+        document.getElementById('zh-sum-text').innerText = sumText;
+    } catch (e) {
+        document.getElementById('zh-sum-text').innerHTML = `<span style="color:red">摘要生成失败：${e.message}</span>`;
+        _articleSummary = '';
+        window._articleSummary = '';
+    }
+
+    // 3. 【注意】以下代码在摘要生成完成后才执行
+    const nodes = initialNodes.length ? initialNodes : collectTranslationNodes(richTextContainer);
+    const sysTr = `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。
+只翻译 CONTENT_TO_TRANSLATE_ONLY_BEGIN 和 CONTENT_TO_TRANSLATE_ONLY_END 之间的内容。
+CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，绝对不能翻译、复述、输出或改写。
+输出中不得出现 Previous Summary、Content to Translate、CONTEXT_SUMMARY、CONTENT_TO_TRANSLATE 等边界标题。
+如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`;
+
+    // 4. 并发处理所有节点（保持全并发，不加await）
+    Array.from(nodes).forEach((node, i) => {
+        const cacheContent = getNodeCacheContent(node);
+        const cachedTranslation = getTranslationCache('block', cacheContent);
+        let currentTranslation = cachedTranslation || '';
+
+        const trCard = document.createElement('div');
+        trCard.className = 'zh-tr-card zh-para-tr';
+        trCard.dataset.zhTrFor = stableHash(cacheContent);
+        node.after(trCard);
+
+        const requestAndRender = (isRegenerate = false) => {
+            trCard.innerHTML = `<span class="zh-spinner"></span><span style="opacity:0.8;">${isRegenerate ? '正在重新生成翻译...' : '正在请求 AI 接口研读...'}</span>`;
+            callLLMMessages(buildTranslationMessages(sysTr, node))
+                .then(content => {
+                    const cleaned = cleanTranslationOutput(content);
+                    currentTranslation = cleaned;
+                    setTranslationCache('block', cacheContent, cleaned);
+                    renderParagraphTranslationCard(trCard, cleaned, () => requestAndRender(true));
+                })
+                .catch(err => {
+                    if (currentTranslation) {
+                        renderParagraphTranslationCard(trCard, currentTranslation, () => requestAndRender(true));
+                        const errLine = document.createElement('div');
+                        errLine.style.cssText = 'margin-top:8px; color:#b33; font-size:13px;';
+                        errLine.textContent = `重新生成失败：${err.message}`;
+                        trCard.appendChild(errLine);
+                    } else {
+                        trCard.innerHTML = `<span style="color:red">请求失败: ${err.message}</span>`;
+                    }
+                });
+        };
+
+        if (cachedTranslation) {
+            renderParagraphTranslationCard(trCard, cachedTranslation, () => requestAndRender(true));
+            return;
+        }
+
+        if (config.autoTr) {
+            // 【全并发核心】直接发起 messages harness，不用 await！
+            trCard.innerHTML = `<span class="zh-spinner"></span><span style="opacity:0.6;">解析队列中...</span>`;
+            requestAndRender(false);
+
+        } else {
+            // 手动点击模式
+            const btnId = 'zh-tr-btn-' + i;
+            trCard.innerHTML = `<span id="${btnId}" style="opacity:0.8; cursor:pointer; color: var(--zh-accent); display:flex; align-items:center;">▶ 点击请求 AI 翻译此段</span>`;
+
+            setTimeout(() => {
+                const triggerBtn = document.getElementById(btnId);
+                if(triggerBtn) {
+                    triggerBtn.addEventListener('click', () => {
+                        requestAndRender(false);
+                    });
+                }
+            }, 0);
+        }
+    });
+}
+    /**
+     * ============================================================================
+     * 模态框 / UI 构建函数 (使用常量区的HTML模板)
+     * ============================================================================
+     */
+    function createModal(id, title, innerHTML) {
+        const overlay = document.createElement('div');
+        overlay.id = id;
+        overlay.className = 'zh-modal-overlay';
+        overlay.innerHTML = `
+            <div class="zh-modal">
+                <div class="zh-modal-header">
+                    <span>${title}</span>
+                    <button class="zh-modal-close" id="${id}-close-btn">×</button>
+                </div>
+                <div class="zh-modal-body">${innerHTML}</div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        document.getElementById(`${id}-close-btn`).addEventListener('click', () => {
+            overlay.remove();
+        });
+        return overlay;
+    }
+
+    //
+function S2translate(id, title, innerHTML) {
+    const overlay = document.createElement('div');
+    overlay.id = id;
+    overlay.className = 'zh-modal-overlay';
+    
+    // 1. 布局调整：推到左下角，并修复溢出问题
+    overlay.style.alignItems = 'flex-end';       // 垂直方向靠底
+    overlay.style.justifyContent = 'flex-start'; // 水平方向靠左
+    overlay.style.padding = '24px';              // 距离左下角留出 24px 的安全边距
+    // ⚠️ 关键修复：强行改变盒模型，防止 padding 撑爆 100% 的 height，导致模态框被挤出屏幕
+    overlay.style.boxSizing = 'border-box';      
+
+    // 2. 结构优化：限制最大高度，内容超长时内部滚动
+    overlay.innerHTML = `
+        <div class="zh-modal" style="margin: 0; max-height: 100%; display: flex; flex-direction: column;">
+            <div class="zh-modal-header" style="flex-shrink: 0; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                <span style="font-weight: bold;">${title}</span>
+                <button class="zh-modal-close" id="${id}-close-btn" style="background: transparent; border: none; font-size: 20px; cursor: pointer;">×</button>
+            </div>
+            <div class="zh-modal-body" style="padding: 15px; overflow-y: auto; flex-grow: 1;">
+                ${innerHTML}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // 3. 点击 ❌ 按钮关闭
+    document.getElementById(`${id}-close-btn`).addEventListener('click', () => {
+        overlay.remove();
+    });
+
+    // 4. 点击遮罩层关闭 (Click Outside to Close)
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            overlay.remove();
+        }
+    });
+
+    return overlay;
+}
+
+    function getFormNumber(id, fallback, min = 0) {
+        const el = document.getElementById(id);
+        const raw = (el?.value || '').trim();
+        if (raw === '') return fallback;
+        const value = Number(raw);
+        return Number.isFinite(value) ? Math.max(min, value) : fallback;
+    }
+
+    function readApiSettingsFromForm() {
+        return {
+            apiHost: (document.getElementById('zh-cfg-host')?.value || '').trim(),
+            apiKey: (document.getElementById('zh-cfg-key')?.value || '').trim(),
+            apiModel: (document.getElementById('zh-cfg-model')?.value || '').trim()
+        };
+    }
+
+    function readSettingsFromForm() {
+        const shareFormat = document.getElementById('zh-cfg-share-format')?.value || 'svg';
+        return {
+            ...readApiSettingsFromForm(),
+            targetLang: document.getElementById('zh-cfg-lang').value,
+            radarInterestTags: (document.getElementById('zh-cfg-radar-tags')?.value || '').trim(),
+            autoSum: document.getElementById('zh-cfg-autosum').checked,
+            autoTr: document.getElementById('zh-cfg-autotr').checked,
+            autoHideImages: document.getElementById('zh-cfg-auto-hide-images').checked,
+            shareExportFormat: ['html', 'svg', 'png'].includes(shareFormat) ? shareFormat : 'svg',
+            answerPreviewMode: document.getElementById('zh-cfg-answer-preview').value,
+            wikiMaxItems: getFormNumber('zh-cfg-wiki-max', 100, 1),
+            wikiConcurrency: getFormNumber('zh-cfg-wiki-concurrency', 20, 0),
+            wikiRpm: getFormNumber('zh-cfg-wiki-rpm', 300, 0),
+            wikiFinalSynthesis: document.getElementById('zh-cfg-wiki-final').checked
+        };
+    }
+
+    function showPromptPreviewModal() {
+        if (document.getElementById('zh-prompts-modal')) return;
+        const content = [
+            '【学习卡片系统提示词】',
+            getWikiLearningCardSystemPrompt(),
+            '',
+            '【总览系统提示词】',
+            getWikiSynthesisSystemPrompt(),
+            '',
+            '【信息雷达报告系统提示词】',
+            getRadarReportSystemPrompt(),
+            '',
+            '【翻译摘要提示词】',
+            '你是一个阅读助手。请将文章提炼为100字左右的摘要，主要用于提供上下文。不要有任何多余的客套话。',
+            '',
+            '【段落翻译提示词模板】',
+            `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。注意：如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`
+        ].join('\n\n');
+        createModal('zh-prompts-modal', '当前系统提示词预览', `<pre style="white-space:pre-wrap;word-break:break-word;background:var(--zh-code);border:1px solid var(--zh-border);border-radius:4px;padding:12px;max-height:60vh;overflow:auto;">${escapeHTML(content)}</pre>`);
+    }
+
+    function showSettingsModal() {
+        if(document.getElementById('zh-settings-modal')) return;
+        const modal = createModal('zh-settings-modal', '⚙️ 设置偏好', SETTINGS_MODAL_HTML(config));
+
+        // 绑定眼睛图标的切换事件
+        document.getElementById('zh-toggle-eye').addEventListener('click', function() {
+            const input = document.getElementById('zh-cfg-key');
+            if (input.type === 'password') {
+                input.type = 'text';
+                this.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"></path></svg>`;
+            } else {
+                input.type = 'password';
+                this.innerHTML = `<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+            }
+        });
+        bindApiProfileControls();
+
+        // 测试 API 按钮
+        document.getElementById('zh-test-api-btn').addEventListener('click', async function() {
+            const apiSettings = readApiSettingsFromForm();
+            const resDiv = document.getElementById('zh-test-res');
+            resDiv.style.display = 'block';
+            resDiv.style.color = 'var(--zh-text)';
+            resDiv.innerHTML = `<span class="zh-spinner"></span>正在向主机发送问候...`;
+
+            try {
+                const testRes = await callLLM("你是一个连通性测试助手。请只回答‘✅ 连接成功！’", "Test", apiSettings.apiKey, apiSettings.apiHost, apiSettings.apiModel);
+                saveConfig(apiSettings);
+                resDiv.style.color = 'green';
+                resDiv.innerText = `${testRes || '✅ 连接成功！'}\n已同步本次 Host / Key / Model，后续摘要会使用这套配置。`;
+            } catch (err) {
+                resDiv.style.color = 'red';
+                resDiv.innerText = '❌ ' + err.message;
+            }
+        });
+
+        document.getElementById('zh-preview-prompts-btn').addEventListener('click', showPromptPreviewModal);
+
+        // 保存配置按钮
+        document.getElementById('zh-save-settings-btn').addEventListener('click', () => {
+            saveConfig(readSettingsFromForm());
+            if (window._isImmersive) setupImageToggles();
+            document.getElementById('zh-settings-modal').remove();
+            alert('设置已保存！');
+        });
+    }
+
+    function showHelpModal() {
+        if(document.getElementById('zh-help-modal')) return;
+        createModal('zh-help-modal', '❓ 卷轴指南', HELP_MODAL_HTML);
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function isQuestionPage() {
+        return /\/question\/\d+/.test(location.pathname);
+    }
+
+    function isHomePage() {
+        const host = location.hostname.replace(/^www\./, '');
+        return host === 'zhihu.com' && location.pathname === '/';
+    }
+
+    function isPostPage() {
+        return /\/p\/[^/]+/.test(location.pathname);
+    }
+
+    function isAnswerUrl() {
+        return /\/question\/\d+\/answer\/\d+/.test(location.pathname);
+    }
+
+    function getMainQuestionUrl() {
+        const match = location.href.match(/^(https?:\/\/[^?#]+\/question\/\d+)/);
+        return match ? match[1] : location.origin + location.pathname.replace(/\/answer\/.*/, '');
+    }
+
+    function getQuestionCacheKey() {
+        return `${getMainQuestionUrl().replace(/[#?].*$/, '')}::preview=${config.answerPreviewMode || 'excerpt'}`;
+    }
+
+    function getQuestionMainPageCacheKey() {
+        return `${location.origin}${location.pathname.replace(/\/answer\/.*/, '').replace(/[#?].*$/, '')}::preview=${config.answerPreviewMode || 'excerpt'}`;
+    }
+
+    function getDocumentHeight() {
+        return Math.max(
+            document.body?.scrollHeight || 0,
+            document.documentElement?.scrollHeight || 0,
+            document.body?.offsetHeight || 0,
+            document.documentElement?.offsetHeight || 0
+        );
+    }
+
+    function forceScrollToBottom() {
+        const height = getDocumentHeight();
+        window.scrollTo(0, height);
+        document.documentElement.scrollTop = height;
+        document.body.scrollTop = height;
+    }
+
+    async function waitForElement(selector, timeout = 15000) {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+            await sleep(200);
+        }
+        return null;
+    }
+
+    async function waitForHomeFeedItems(targetCount = HOME_BATCH_SIZE, timeout = 25000, statusEl = null) {
+        const start = Date.now();
+        let lastCount = 0;
+        let lastChangedAt = start;
+
+        while (Date.now() - start < timeout) {
+            const items = getHomeFeedItems();
+            if (items.length >= targetCount) return items;
+
+            if (items.length !== lastCount) {
+                lastCount = items.length;
+                lastChangedAt = Date.now();
+            }
+
+            if (statusEl) {
+                statusEl.textContent = items.length
+                    ? `正在等待首页推荐流稳定... ${Math.min(items.length, targetCount)}/${targetCount}`
+                    : '正在等待首页推荐卡片...';
+            }
+
+            if (items.length > 0 && Date.now() - lastChangedAt > 1400) return items;
+            await sleep(250);
+        }
+
+        return getHomeFeedItems();
+    }
+
+    async function expandQuestionRichText() {
+        for (let i = 0; i < 3; i++) {
+            const btn = document.querySelector('button.QuestionRichText-more');
+            if (!btn) return;
+            btn.click();
+            await sleep(500);
+        }
+    }
+
+    function getQuestionDetailHTML() {
+        const detail = document.querySelector('.QuestionRichText.QuestionRichText--expandable') || document.querySelector('.QuestionRichText');
+        if (!detail || !detail.innerText.trim()) return '';
+        const clone = detail.cloneNode(true);
+        clone.querySelectorAll('button.QuestionRichText-more').forEach(btn => btn.remove());
+        return clone.innerHTML;
+    }
+
+    function getQuestionTitleText() {
+        return (document.querySelector('h1.QuestionHeader-title')?.innerText || document.title || '知乎问题').trim();
+    }
+
+    function getAnswerKey(item, index) {
+        const metaUrl = item.querySelector('meta[itemprop="url"]')?.content;
+        if (metaUrl) return metaUrl;
+        const answerLink = item.querySelector('a[href*="/answer/"]')?.href;
+        if (answerLink) return answerLink;
+        const zop = item.getAttribute('data-zop');
+        if (zop) {
+            try {
+                const data = JSON.parse(zop);
+                if (data.itemId) return String(data.itemId);
+            } catch (err) {}
+        }
+        return `${index}-${(item.innerText || '').slice(0, 80)}`;
+    }
+
+    function expandAnswerItem(item) {
+        const controls = item.querySelectorAll('.RichContent button, .RichContent-collapsedText, button.ContentItem-more');
+        controls.forEach(ctrl => {
+            const text = (ctrl.innerText || ctrl.textContent || '').trim();
+            if (/阅读全文|显示全部|展开阅读全文|展开/.test(text)) {
+                try { ctrl.click(); } catch (err) {}
+            }
+        });
+    }
+
+    function getAnswerAuthor(item) {
+        const metaName = item.querySelector('meta[itemprop="name"]')?.content;
+        const textName = item.querySelector('.AuthorInfo-name, .UserLink.AuthorInfo-name, .UserLink-link')?.innerText;
+        return (metaName || textName || '匿名用户').trim();
+    }
+
+    function getAnswerVoteText(item) {
+        const count = item.querySelector('meta[itemprop="upvoteCount"]')?.content;
+        if (count && count !== '0') return `${count} 人赞同`;
+        const voteText = item.querySelector('.css-1lr85n')?.innerText;
+        if (voteText) return voteText.trim();
+        const aria = item.querySelector('button[aria-label*="赞同"]')?.getAttribute('aria-label');
+        return (aria || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getAnswerText(item) {
+        const richText = item.querySelector('.RichText.ztext, .RichText');
+        return (richText?.innerText || item.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function escapeHTML(text) {
+        return String(text ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[ch]));
+    }
+
+    function cleanupAnswerClone(clone) {
+        clone.querySelectorAll('script, style, .pc-article-answer-card, .pc-article-answer-text-chain, .pc-article-answer-big-img, .ecommerce-ad-box, .MCNLinkCard').forEach(el => el.remove());
+        clone.querySelectorAll('.ContentItem-actions').forEach(el => {
+            el.style.position = 'static';
+            el.style.boxShadow = 'none';
+            el.style.background = 'transparent';
+        });
+        clone.querySelectorAll('img').forEach(img => {
+            const realSrc = img.getAttribute('data-original') || img.getAttribute('data-actualsrc');
+            if (realSrc) img.src = realSrc;
+        });
+        return clone;
+    }
+
+    function createLivePlaceholder(node, prefix) {
+        const placeholder = document.createElement('span');
+        placeholder.id = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        placeholder.style.display = 'none';
+        node.parentNode.insertBefore(placeholder, node);
+        return placeholder;
+    }
+
+    function restoreLiveMount() {
+        if (!_liveMountState) return;
+        const { node, placeholder, origCssText } = _liveMountState;
+        if (node && placeholder?.parentNode) {
+            node.style.cssText = origCssText || '';
+            placeholder.parentNode.insertBefore(node, placeholder);
+            placeholder.remove();
+        }
+        _liveMountState = null;
+    }
+
+    function mountLiveNode(node, target) {
+        restoreLiveMount();
+        if (!node || !node.parentNode || !target) return false;
+        _liveMountState = {
+            node,
+            placeholder: createLivePlaceholder(node, 'zh-live-node-placeholder'),
+            origCssText: node.style.cssText || ''
+        };
+        node.style.display = '';
+        node.style.position = 'static';
+        node.style.boxShadow = 'none';
+        node.style.background = 'transparent';
+        target.appendChild(node);
+        return true;
+    }
+
+    function cloneFromHTML(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html || '<div></div>';
+        return template.content.firstElementChild || document.createElement('div');
+    }
+
+    function getElementPageTop(el) {
+        const rect = el.getBoundingClientRect();
+        return Math.max(0, Math.round(window.scrollY + rect.top));
+    }
+
+    function serializeAnswerForCache(answer) {
+        return {
+            key: answer.key,
+            author: answer.author,
+            voteText: answer.voteText,
+            snippet: answer.snippet,
+            preview: answer.preview,
+            text: answer.text,
+            sourceTop: answer.sourceTop,
+            html: answer.clone?.outerHTML || ''
+        };
+    }
+
+    function hydrateAnswerFromCache(answer) {
+        return {
+            key: answer.key,
+            author: answer.author,
+            voteText: answer.voteText,
+            snippet: answer.snippet,
+            preview: answer.preview || answer.snippet,
+            text: answer.text || '',
+            sourceTop: Number.isFinite(answer.sourceTop) ? answer.sourceTop : 0,
+            clone: cleanupAnswerClone(cloneFromHTML(answer.html))
+        };
+    }
+
+    function buildQuestionCachePayload(cacheKey) {
+        return {
+            cacheKey,
+            savedAt: Date.now(),
+            previewMode: config.answerPreviewMode || 'excerpt',
+            questionTitle: _questionState.questionTitle,
+            questionDetailHTML: _questionState.questionDetailHTML,
+            currentIndex: _questionState.currentIndex || 0,
+            exitScrollY: _questionState.exitScrollY || 0,
+            exhausted: !!_questionState.exhausted,
+            answers: _questionState.answers.map(serializeAnswerForCache)
+        };
+    }
+
+    async function persistCurrentQuestionCache() {
+        if (!isQuestionPage() || isAnswerUrl() || !_questionState.answers.length) return;
+        const cacheKey = getQuestionCacheKey();
+        const payload = buildQuestionCachePayload(cacheKey);
+        _questionAnswerCache.set(cacheKey, {
+            answers: _questionState.answers,
+            questionTitle: _questionState.questionTitle,
+            questionDetailHTML: _questionState.questionDetailHTML,
+            currentIndex: _questionState.currentIndex || 0,
+            exitScrollY: _questionState.exitScrollY || 0,
+            exhausted: !!_questionState.exhausted
+        });
+        try {
+            await putQuestionCacheRecord(payload);
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：持久缓存写入失败', err);
+        }
+    }
+
+    function navigateFromAnswerToMainQuestion() {
+        const mainUrl = getMainQuestionUrl();
+        const cacheKey = getQuestionMainPageCacheKey();
+        _questionAnswerCache.delete(cacheKey);
+        try {
+            sessionStorage.setItem('zh-force-main-question-collect', mainUrl);
+        } catch (err) {}
+        if (window._isImmersive) exitImmersive();
+        location.assign(`${mainUrl}${mainUrl.includes('?') ? '&' : '?'}zh_force_collect=${Date.now()}`);
+    }
+
+    async function loadPersistentQuestionCache(cacheKey) {
+        try {
+            const record = await getQuestionCacheRecord(cacheKey);
+            if (!record?.answers?.length) return null;
+            const hydrated = {
+                answers: record.answers.map(hydrateAnswerFromCache),
+                questionTitle: record.questionTitle,
+                questionDetailHTML: record.questionDetailHTML,
+                currentIndex: record.currentIndex || 0,
+                exitScrollY: record.exitScrollY || 0,
+                exhausted: record.exhausted === true
+            };
+            _questionAnswerCache.set(cacheKey, hydrated);
+            return hydrated;
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：持久缓存读取失败', err);
+            return null;
+        }
+    }
+
+    function buildAnswerRecord(item, index) {
+        expandAnswerItem(item);
+        const text = getAnswerText(item);
+        const clone = cleanupAnswerClone(item.cloneNode(true));
+        return {
+            key: getAnswerKey(item, index),
+            author: getAnswerAuthor(item),
+            voteText: getAnswerVoteText(item),
+            snippet: text.slice(0, 160),
+            preview: text.slice(0, 160),
+            text,
+            sourceTop: getElementPageTop(item),
+            liveNode: item,
+            clone
+        };
+    }
+
+    function attachLiveNodesToAnswers(answers) {
+        const liveItems = getAnswerItems();
+        answers.forEach(answer => {
+            if (answer.liveNode) return;
+            const match = liveItems.find((item, index) => getAnswerKey(item, index) === answer.key);
+            if (match) answer.liveNode = match;
+        });
+    }
+
+    async function enrichAnswersForList(answers, statusEl = null) {
+        answers.forEach(answer => {
+            answer.preview = answer.snippet || '该回答暂无可预览文本。';
+        });
+
+        if (config.answerPreviewMode !== 'ai' || !answers.length) return answers;
+
+        if (!config.apiKey) {
+            if (statusEl) statusEl.textContent = '未配置 API Key，已回退为摘录回答前文。';
+            await sleep(600);
+            return answers;
+        }
+
+        const sys = "你是一个阅读列表摘要助手。请把用户提供的知乎回答压缩成不超过60字的中文摘要。只输出摘要正文，不要编号，不要Markdown。";
+        let finished = 0;
+        if (statusEl) statusEl.textContent = `正在并发生成 AI 摘要 0/${answers.length}`;
+        showCollectOverlay(`正在并发生成 AI 摘要 0/${answers.length}`);
+
+        await Promise.allSettled(answers.map(async answer => {
+            const source = (answer.text || '').slice(0, 2600);
+            if (!source.trim()) return;
+
+            try {
+                const summary = await callLLM(sys, `【回答正文】\n${source}`);
+                if (summary) answer.preview = summary.replace(/\s+/g, ' ').trim();
+            } catch (err) {
+                answer.preview = answer.snippet || `AI 摘要失败：${err.message}`;
+            } finally {
+                finished++;
+                const message = `正在并发生成 AI 摘要 ${finished}/${answers.length}`;
+                if (statusEl) statusEl.textContent = message;
+                showCollectOverlay(message);
+            }
+        }));
+
+        return answers;
+    }
+
+    function getAnswerItems() {
+        return Array.from(document.querySelectorAll('.QuestionAnswers-answers .ContentItem.AnswerItem, .ContentItem.AnswerItem'))
+            .filter(item => !item.closest('#immersive-wrapper'));
+    }
+
+    function getHomeCacheKey() {
+        return `${location.origin}${location.pathname}::topstory`;
+    }
+
+    function getHomeFeedItems() {
+        return Array.from(document.querySelectorAll('#TopstoryContent .Card.TopstoryItem, #TopstoryContent .TopstoryItem'))
+            .filter(item => !item.closest('#immersive-wrapper') && item.querySelector('.ContentItem, .RichContent, .RichText'));
+    }
+
+    function getHomeRecommendInitialApiUrl(limit = HOME_BATCH_SIZE) {
+        const url = new URL('/api/v3/feed/topstory/recommend', location.origin);
+        url.searchParams.set('action', 'down');
+        url.searchParams.set('page_number', '1');
+        url.searchParams.set('limit', String(limit));
+        return url.href;
+    }
+
+    function normalizeHomeApiNextUrl(raw) {
+        if (!raw) return '';
+        try {
+            return new URL(raw, location.origin).href;
+        } catch (err) {
+            return '';
+        }
+    }
+
+    function parseHomeBrief(feedItem) {
+        try {
+            return feedItem?.brief ? JSON.parse(feedItem.brief) : {};
+        } catch (err) {
+            return {};
+        }
+    }
+
+    function expandHomeFeedItem(item) {
+        item.querySelectorAll('.RichContent button, .RichContent-collapsedText, button.ContentItem-more').forEach(ctrl => {
+            const text = (ctrl.innerText || ctrl.textContent || '').trim();
+            if (/阅读全文|显示全部|展开阅读全文|展开/.test(text)) {
+                try { ctrl.click(); } catch (err) {}
+            }
+        });
+    }
+
+    function isZhihuContentUrl(url) {
+        return /\/question\/\d+(?:\/answer\/\d+)?(?:[/?#]|$)/.test(url || '')
+            || /\/p\/\d+(?:[/?#]|$)/.test(url || '');
+    }
+
+    function normalizeContentUrl(raw) {
+        if (!raw) return '';
+        try {
+            const url = new URL(raw, location.origin);
+            url.hash = '';
+            return isZhihuContentUrl(url.href) ? url.href : '';
+        } catch (err) {
+            return isZhihuContentUrl(raw) ? raw : '';
+        }
+    }
+
+    function getHomeContentUrlCandidates(item) {
+        const candidates = [];
+        item.querySelectorAll('.ContentItem-title a[href], h2 a[href], a.ContentItem-title[href], a[href*="/answer/"], a[href*="/question/"], a[href*="/p/"]').forEach(link => {
+            const normalized = normalizeContentUrl(link.href || link.getAttribute('href'));
+            if (normalized) candidates.push(normalized);
+        });
+        item.querySelectorAll('meta[itemprop="url"]').forEach(meta => {
+            const normalized = normalizeContentUrl(meta.content);
+            if (normalized) candidates.push(normalized);
+        });
+        return Array.from(new Set(candidates));
+    }
+
+    function getHomeItemKey(item, index) {
+        const link = getHomeContentUrlCandidates(item)[0];
+        if (link) return link;
+        const title = item.querySelector('.ContentItem-title, h2')?.innerText || '';
+        return `${index}-${title}-${(item.innerText || '').slice(0, 60)}`;
+    }
+
+    function getHomeItemUrl(item) {
+        return getHomeContentUrlCandidates(item)[0] || '';
+    }
+
+    function getHomeItemType(url) {
+        if (/\/p\//.test(url)) return '专栏文章';
+        if (/\/question\/\d+\/answer\//.test(url)) return '问题回答';
+        if (/\/question\//.test(url)) return '问题';
+        return '知乎内容';
+    }
+
+    function getHomeItemTitle(item) {
+        return (item.querySelector('.ContentItem-title, h2')?.innerText || '知乎推荐内容').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeItemAuthor(item) {
+        const metaName = item.querySelector('meta[itemprop="name"]')?.content;
+        const textName = item.querySelector('.AuthorInfo-name, .UserLink.AuthorInfo-name, .UserLink-link')?.innerText;
+        return (metaName || textName || '未知作者').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeItemText(item) {
+        const richText = item.querySelector('.RichText.ztext, .RichText, .RichContent-inner');
+        return (richText?.innerText || item.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getWebUrlFromApiTarget(target = {}) {
+        const type = target.type || '';
+        if (type === 'answer' && target.question?.id && target.id) {
+            return `https://www.zhihu.com/question/${target.question.id}/answer/${target.id}`;
+        }
+        if (type === 'article' && target.id) {
+            return `https://zhuanlan.zhihu.com/p/${target.id}`;
+        }
+        if (type === 'question' && target.id) {
+            return `https://www.zhihu.com/question/${target.id}`;
+        }
+        return normalizeContentUrl(target.url || target.url_token || '');
+    }
+
+    function getHomeApiTargetTitle(target = {}, brief = {}) {
+        if (target.type === 'answer') return target.question?.title || brief.title || '知乎回答';
+        return target.title || target.question?.title || brief.title || '知乎推荐内容';
+    }
+
+    function getHomeApiTargetAuthor(target = {}, brief = {}) {
+        return (target.author?.name || brief.author || brief.member?.name || '未知作者').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeApiAuthorAvatar(target = {}, brief = {}) {
+        const author = target.author || brief.member || {};
+        const template = author.avatar_url_template || author.avatarUrlTemplate || '';
+        if (template) return String(template).replace('{size}', 'xl').replace('{id}', 'xl');
+        return author.avatar_url || author.avatarUrl || author.avatar || brief.avatar_url || '';
+    }
+
+    function getHomeApiAuthorHeadline(target = {}, brief = {}) {
+        const author = target.author || brief.member || {};
+        return (author.headline || author.description || author.bio || brief.headline || brief.description || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeApiThumbnail(target = {}, brief = {}) {
+        const thumbnails = target.thumbnails || brief.thumbnails || [];
+        const first = Array.isArray(thumbnails) ? thumbnails[0] : null;
+        return target.thumbnail || target.thumbnail_url || target.image_url || brief.thumbnail || brief.thumbnail_url
+            || (typeof first === 'string' ? first : first?.url || '');
+    }
+
+    function formatHomeApiStats(target = {}) {
+        return [
+            ['赞同', target.voteup_count],
+            ['评论', target.comment_count],
+            ['收藏', target.favorite_count],
+            ['感谢', target.thanks_count],
+            ['浏览', target.visited_count]
+        ].filter(([, value]) => Number.isFinite(Number(value)) && Number(value) > 0)
+            .map(([label, value]) => `${value} ${label}`)
+            .join(' · ');
+    }
+
+    function getHomeApiTargetType(target = {}, url = '') {
+        if (target.type === 'answer') return '问题回答';
+        if (target.type === 'article') return '专栏文章';
+        if (target.type === 'question') return '问题';
+        return getHomeItemType(url);
+    }
+
+    function getHomeApiTargetHTML(target = {}, text = '') {
+        const html = target.content || target.excerpt_new || target.excerpt || target.detail || '';
+        if (/<[a-z][\s\S]*>/i.test(String(html))) return html;
+        return escapeHTML(html || text).replace(/\n/g, '<br>');
+    }
+
+    function buildHomeApiClone(record, target = {}) {
+        const clone = document.createElement('article');
+        clone.className = 'ContentItem zh-home-api-item';
+        const avatarHTML = record.authorAvatar
+            ? `<img class="Avatar" src="${escapeHTML(record.authorAvatar)}" alt="" style="width:40px;height:40px;min-width:40px;border-radius:5px;object-fit:cover;box-shadow:none;margin-right:10px;">`
+            : '';
+        const headlineHTML = record.authorHeadline
+            ? `<div style="font-size:13px;opacity:.72;margin-top:2px;">${escapeHTML(record.authorHeadline)}</div>`
+            : '';
+        const thumbnailHTML = record.thumbnail
+            ? `<figure style="margin:14px 0;"><img src="${escapeHTML(record.thumbnail)}" alt="" style="max-width:100%;height:auto;border-radius:6px;object-fit:cover;"></figure>`
+            : '';
+        clone.innerHTML = `
+            <h2 class="ContentItem-title"><a href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHTML(record.title)}</a></h2>
+            <div class="AuthorInfo" style="display:flex;align-items:flex-start;margin:8px 0 16px;">
+                ${avatarHTML}
+                <div>
+                    <div style="font-weight:bold;">${escapeHTML(record.author)}${record.stats ? ` · <span style="font-weight:normal;opacity:.78;">${escapeHTML(record.stats)}</span>` : ''}</div>
+                    ${headlineHTML}
+                </div>
+            </div>
+            ${thumbnailHTML}
+            <div class="RichText ztext">${getHomeApiTargetHTML(target, record.text)}</div>
+            <div class="ContentItem-actions"><a href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer">打开原文</a></div>
+        `;
+        return cleanupHomeClone(clone);
+    }
+
+    function buildHomeApiRecord(feedItem, index) {
+        const target = feedItem?.target || {};
+        const brief = parseHomeBrief(feedItem);
+        const url = getWebUrlFromApiTarget(target);
+        const title = getHomeApiTargetTitle(target, brief);
+        const author = getHomeApiTargetAuthor(target, brief);
+        const authorAvatar = getHomeApiAuthorAvatar(target, brief);
+        const authorHeadline = getHomeApiAuthorHeadline(target, brief);
+        const thumbnail = getHomeApiThumbnail(target, brief);
+        const stats = formatHomeApiStats(target);
+        const primaryContent = target.content || target.detail || '';
+        const rawText = stripHTMLToText(primaryContent || target.excerpt_new || target.excerpt || brief.content || brief.text || title);
+        const text = normalizeText(rawText || title);
+        const apiFullContentText = normalizeText(stripHTMLToText(primaryContent));
+        const record = {
+            key: url || feedItem?.id || `${index}-${title}-${text.slice(0, 60)}`,
+            url,
+            type: getHomeApiTargetType(target, url),
+            title,
+            author,
+            authorAvatar,
+            authorHeadline,
+            thumbnail,
+            stats,
+            snippet: text.slice(0, 180),
+            text,
+            sourceTop: _homeState.originalScrollY || window.scrollY || 0,
+            liveNode: null,
+            clone: null,
+            apiFeedId: feedItem?.id || '',
+            apiOffset: feedItem?.offset,
+            apiTargetType: target.type || '',
+            apiContentLength: apiFullContentText.length,
+            apiHasFullContent: apiFullContentText.length >= 80
+        };
+        record.clone = buildHomeApiClone(record, target);
+        return record;
+    }
+
+    function cleanupHomeClone(clone) {
+        clone.querySelectorAll('script, style, .Comments-container, .pc-article-answer-card, .pc-article-answer-text-chain, .pc-article-answer-big-img, .ecommerce-ad-box, .MCNLinkCard').forEach(el => el.remove());
+        clone.querySelectorAll('.ContentItem-actions').forEach(el => {
+            el.style.position = 'static';
+            el.style.boxShadow = 'none';
+            el.style.background = 'transparent';
+        });
+        clone.querySelectorAll('img').forEach(img => {
+            const realSrc = img.getAttribute('data-original') || img.getAttribute('data-actualsrc');
+            if (realSrc) img.src = realSrc;
+        });
+        return clone;
+    }
+
+    function buildHomeRecord(item, index) {
+        expandHomeFeedItem(item);
+        const text = getHomeItemText(item);
+        const url = getHomeItemUrl(item);
+        return {
+            key: getHomeItemKey(item, index),
+            url,
+            type: getHomeItemType(url),
+            title: getHomeItemTitle(item),
+            author: getHomeItemAuthor(item),
+            snippet: text.slice(0, 180),
+            text,
+            sourceTop: getElementPageTop(item),
+            liveNode: item,
+            clone: cleanupHomeClone(item.cloneNode(true))
+        };
+    }
+
+    function updateHomeCollectStatus(statusEl, message) {
+        if (statusEl?.id === 'zh-wiki-progress' && wikiState.running) {
+            updateWikiProgress(message, 'collect');
+        } else {
+            if (statusEl) statusEl.textContent = message;
+            showCollectOverlay(message);
+        }
+    }
+
+    async function fetchHomeRecommendApiPage(limit = HOME_BATCH_SIZE) {
+        const url = _homeState.apiNextUrl || getHomeRecommendInitialApiUrl(limit);
+        const data = await gmFetchJSON(url);
+        _homeState.apiStarted = true;
+        const paging = data?.paging || {};
+        _homeState.apiNextUrl = normalizeHomeApiNextUrl(paging.next);
+        if (paging.is_end || !_homeState.apiNextUrl) _homeState.exhausted = true;
+        return Array.isArray(data?.data) ? data.data : [];
+    }
+
+    async function collectHomeFeedItemsFromApi(statusEl = null, targetCount = HOME_BATCH_SIZE, options = {}) {
+        const records = new Map();
+        const existingKeys = new Set(options.existingKeys || []);
+        const label = options.label || 'API 加载首页推荐';
+        const maxPages = options.maxPages || Math.max(3, Math.ceil(targetCount / HOME_BATCH_SIZE) + 3);
+
+        for (let page = 0; page < maxPages && records.size < targetCount && !_homeState.exhausted; page++) {
+            if (wikiState.running) await waitWhileWikiPaused();
+            updateHomeCollectStatus(statusEl, `${label} ${Math.min(records.size, targetCount)}/${targetCount}（API 第 ${page + 1} 页）`);
+            const feedItems = await fetchHomeRecommendApiPage(HOME_BATCH_SIZE);
+            if (!feedItems.length) {
+                _homeState.exhausted = true;
+                break;
+            }
+
+            feedItems.forEach((feedItem, index) => {
+                const record = buildHomeApiRecord(feedItem, index);
+                if (record.text.length >= 5 && !existingKeys.has(record.key) && !records.has(record.key)) records.set(record.key, record);
+            });
+
+            updateHomeCollectStatus(statusEl, `${label} ${Math.min(records.size, targetCount)}/${targetCount}`);
+        }
+
+        return Array.from(records.values()).slice(0, targetCount);
+    }
+
+    function collectHomeFeedItemsFromDOM(statusEl = null, targetCount = HOME_BATCH_SIZE, options = {}) {
+        const records = new Map();
+        const existingKeys = new Set(options.existingKeys || []);
+        const label = options.label || '读取首页预加载推荐';
+        const currentItems = getHomeFeedItems();
+        currentItems.forEach(item => expandHomeFeedItem(item));
+        currentItems.forEach((item, index) => {
+            const record = buildHomeRecord(item, index);
+            if (record.text.length >= 5 && !existingKeys.has(record.key) && !records.has(record.key)) records.set(record.key, record);
+        });
+        updateHomeCollectStatus(statusEl, `${label} ${Math.min(records.size, targetCount)}/${targetCount}（DOM 兜底，不触底滚动）`);
+        return Array.from(records.values()).slice(0, targetCount);
+    }
+
+    async function collectHomeFeedItems(statusEl = null, targetCount = HOME_BATCH_SIZE, options = {}) {
+        if (options.source !== 'api') {
+            return collectHomeFeedItemsFromDOM(statusEl, targetCount, options);
+        }
+        try {
+            const apiRecords = await collectHomeFeedItemsFromApi(statusEl, targetCount, options);
+            if (apiRecords.length || _homeState.apiStarted) return apiRecords;
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：首页推荐 API 加载失败，回退 DOM 预加载内容', err);
+            updateHomeCollectStatus(statusEl, `首页推荐 API 加载失败，回退页面预加载内容：${err.message || err}`);
+        }
+        return collectHomeFeedItemsFromDOM(statusEl, targetCount, options);
+    }
+
+    function showCollectOverlay(text) {
+        let overlay = document.getElementById('zh-question-collect-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'zh-question-collect-overlay';
+            overlay.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:99999999;padding:12px 16px;background:#111;color:#fff;border-radius:4px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.24);';
+            document.body.appendChild(overlay);
+        }
+        overlay.textContent = text;
+        return overlay;
+    }
+
+    function removeCollectOverlay() {
+        const overlay = document.getElementById('zh-question-collect-overlay');
+        if (overlay) overlay.remove();
+    }
+
+    async function collectQuestionAnswers(statusEl = null, targetCount = HOME_BATCH_SIZE, options = {}) {
+        const records = new Map();
+        const existingKeys = new Set(options.existingKeys || []);
+        const label = options.label || '快速采集问题回答';
+        let unchangedRounds = 0;
+        let lastCount = 0;
+        let lastHeight = 0;
+        const maxRounds = options.maxRounds || Math.max(8, targetCount * 3);
+
+        for (let round = 0; round < maxRounds && records.size < targetCount && unchangedRounds < 6; round++) {
+            const currentItems = getAnswerItems();
+            currentItems.forEach(item => expandAnswerItem(item));
+            await sleep(120);
+
+            currentItems.forEach((item, index) => {
+                const record = buildAnswerRecord(item, index);
+                if (record.text.length >= 5 && !existingKeys.has(record.key) && !records.has(record.key)) records.set(record.key, record);
+            });
+
+            const message = `${label} ${Math.min(records.size, targetCount)}/${targetCount}（第 ${round + 1} 轮）`;
+            if (statusEl) statusEl.textContent = message;
+            showCollectOverlay(message);
+
+            const currentHeight = getDocumentHeight();
+            if (records.size === lastCount && currentHeight === lastHeight) unchangedRounds++;
+            else unchangedRounds = 0;
+            lastCount = records.size;
+            lastHeight = currentHeight;
+
+            if (records.size >= targetCount) break;
+            forceScrollToBottom();
+            await sleep(120);
+            forceScrollToBottom();
+            await sleep(360);
+        }
+
+        return Array.from(records.values()).slice(0, targetCount);
+    }
+
+    function getQuestionExistingKeys() {
+        return new Set(_questionState.answers.map(answer => answer.key).filter(Boolean));
+    }
+
+    async function collectMoreQuestionAnswers(batchSize = HOME_BATCH_SIZE, statusEl = null) {
+        if (_questionState.loadingMore || _questionState.exhausted) return [];
+        _questionState.loadingMore = true;
+        const wrapper = document.getElementById('immersive-wrapper');
+        const previousWrapperDisplay = wrapper?.style.display || '';
+        const wasImmersive = !!window._isImmersive;
+        if (wrapper) wrapper.style.display = 'none';
+        setOriginalPageVisibleForWiki(true);
+        await sleep(120);
+
+        try {
+            let batch = await collectQuestionAnswers(statusEl, batchSize, {
+                existingKeys: getQuestionExistingKeys(),
+                label: '懒加载问题回答',
+                maxRounds: Math.max(8, batchSize * 3)
+            });
+            if (!batch.length) {
+                _questionState.exhausted = true;
+                await persistCurrentQuestionCache();
+                return [];
+            }
+            batch = await enrichAnswersForList(batch, statusEl);
+            _questionState.answers = _questionState.answers.concat(batch);
+            if (batch.length < batchSize) _questionState.exhausted = true;
+            await persistCurrentQuestionCache();
+            return batch;
+        } finally {
+            setOriginalPageVisibleForWiki(false);
+            if (wrapper) wrapper.style.display = previousWrapperDisplay;
+            if (wasImmersive) window.scrollTo(0, 0);
+            _questionState.loadingMore = false;
+            removeCollectOverlay();
+        }
+    }
+
+    async function loadMoreQuestionAndRender(mode = 'list') {
+        const wrapper = document.getElementById('immersive-wrapper');
+        let status = document.getElementById('zh-question-load-status');
+        if (!status && wrapper) {
+            status = document.createElement('div');
+            status.id = 'zh-question-load-status';
+            status.className = 'zh-collect-status';
+            wrapper.appendChild(status);
+        }
+        if (status) status.textContent = `正在加载后续 ${HOME_BATCH_SIZE} 个回答...`;
+        const before = _questionState.answers.length;
+        const keepScrollY = window.scrollY;
+        const batch = await collectMoreQuestionAnswers(HOME_BATCH_SIZE, status);
+        if (mode === 'answer') {
+            if (batch.length && _questionState.currentIndex < _questionState.answers.length - 1) {
+                renderQuestionAnswer(_questionState.currentIndex + 1, false);
+            } else {
+                renderQuestionAnswer(Math.min(_questionState.currentIndex, _questionState.answers.length - 1), false);
+            }
+            return batch;
+        }
+        renderQuestionList();
+        requestAnimationFrame(() => window.scrollTo(0, keepScrollY));
+        if (!batch.length && before === _questionState.answers.length) {
+            const done = document.getElementById('zh-question-load-status');
+            if (done) done.textContent = '暂时没有加载到更多回答。';
+        }
+        return batch;
+    }
+
+    let _questionState = {
+        answers: [],
+        questionTitle: '',
+        questionDetailHTML: '',
+        originalScrollY: 0,
+        exitScrollY: 0,
+        currentIndex: 0,
+        reactRoot: null,
+        view: '',
+        collecting: false,
+        loadingMore: false,
+        exhausted: false
+    };
+
+    let _homeState = {
+        items: [],
+        groups: [],
+        originalScrollY: 0,
+        exitScrollY: 0,
+        currentIndex: 0,
+        currentGroupIndex: 0,
+        currentIndexInGroup: 0,
+        view: '',
+        collecting: false,
+        loadingMore: false,
+        exhausted: false,
+        apiNextUrl: '',
+        apiStarted: false
+    };
+
+    let wikiState = {
+        runId: '',
+        items: [],
+        running: false,
+        finished: false,
+        errors: [],
+        markdown: '',
+        startedAt: null,
+        finishedAt: null,
+        phase: '',
+        progressMessage: '',
+        paused: false,
+        log: [],
+        history: [],
+        runConfig: null
+    };
+
+    function ensureImmersiveStyle() {
+        if (document.getElementById('immersive-style')) return;
+        const style = document.createElement('style');
+        style.id = 'immersive-style';
+        style.innerHTML = STYLE_CSS;
+        document.head.appendChild(style);
+    }
+
+    function hideOriginalPage(wrapper) {
+        const reactRoot = document.getElementById('root') || document.body;
+        _questionState.reactRoot = reactRoot;
+        Array.from(reactRoot.children).forEach(child => {
+            if (child === wrapper || child.id === 'immersive-wrapper' || child.tagName === 'SCRIPT' || child.tagName === 'STYLE' || child.tagName === 'LINK') return;
+            child.dataset.origDisplay = child.style.display || '';
+            child.style.display = 'none';
+            child.classList.add('zh-hidden-by-immersive');
+        });
+        reactRoot.appendChild(wrapper);
+    }
+
+    async function captureQuestionContext() {
+        await waitForElement('h1.QuestionHeader-title');
+        await expandQuestionRichText();
+        _questionState.questionTitle = getQuestionTitleText();
+        _questionState.questionDetailHTML = getQuestionDetailHTML();
+    }
+
+    function appendQuestionHeader(container, showAllAnswersButton = false) {
+        const title = document.createElement('h1');
+        title.className = 'zh-question-title';
+        title.textContent = _questionState.questionTitle || '知乎问题';
+        container.appendChild(title);
+
+        if (_questionState.questionDetailHTML) {
+            const details = document.createElement('details');
+            details.className = 'zh-question-detail';
+            details.innerHTML = `<summary>问题补充</summary><div class="zh-question-detail-body">${_questionState.questionDetailHTML}</div>`;
+            container.appendChild(details);
+        }
+
+        if (showAllAnswersButton) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'zh-question-toolbar';
+            const btn = document.createElement('button');
+            btn.className = 'zh-inline-btn zh-view-all-answers-btn zh-export-hidden';
+            btn.textContent = '查看全部回答';
+            btn.addEventListener('click', navigateFromAnswerToMainQuestion);
+            toolbar.appendChild(btn);
+            container.appendChild(toolbar);
+        }
+
+        const hr = document.createElement('hr');
+        hr.style.cssText = 'border:0;border-top:1px dashed var(--zh-border);margin:24px 0;';
+        container.appendChild(hr);
+    }
+
+    function buildQuestionWrapper() {
+        const wrapper = document.createElement('div');
+        wrapper.id = 'immersive-wrapper';
+        wrapper.className = 'zh-question-wrapper';
+        return wrapper;
+    }
+
+    function clearQuestionTranslations() {
+        document.querySelectorAll('#immersive-wrapper .zh-tr-card').forEach(card => card.remove());
+        document.body.classList.remove('zh-show-tr');
+        window._trVisible = false;
+        _articleSummary = '';
+        window._articleSummary = '';
+        const translateBtn = document.getElementById('zh-translate-btn');
+        if (translateBtn) translateBtn.classList.remove('zh-btn-active');
+    }
+
+    function renderQuestionList() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) return;
+        _questionState.view = 'list';
+        restoreLiveMount();
+        clearQuestionTranslations();
+        wrapper.classList.remove('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendQuestionHeader(wrapper, false);
+
+        const status = document.createElement('div');
+        status.className = 'zh-collect-status';
+        status.textContent = _questionState.answers.length
+            ? `已采集 ${_questionState.answers.length} 个回答，点击任意条目进入正文。`
+            : '没有采集到可展示的回答。';
+        wrapper.appendChild(status);
+
+        const list = document.createElement('div');
+        list.className = 'zh-answer-list';
+        _questionState.answers.forEach((answer, index) => {
+            const item = document.createElement('div');
+            item.className = 'zh-answer-list-item';
+            item.innerHTML = `
+                <div class="zh-answer-list-meta">#${index + 1} · ${escapeHTML(answer.author)}${answer.voteText ? ` · ${escapeHTML(answer.voteText)}` : ''}</div>
+                <div class="zh-answer-list-snippet">${escapeHTML(answer.preview || answer.snippet || '该回答暂无可预览文本。')}</div>
+            `;
+            item.addEventListener('click', () => renderQuestionAnswer(index, false));
+            list.appendChild(item);
+        });
+        wrapper.appendChild(list);
+
+        const loadBox = document.createElement('div');
+        loadBox.id = 'zh-question-load-status';
+        loadBox.className = 'zh-collect-status';
+        loadBox.textContent = _questionState.exhausted
+            ? `已显示 ${_questionState.answers.length} 个回答，暂时没有更多回答。`
+            : `已显示 ${_questionState.answers.length} 个回答，滚到底部或点击按钮再加载 ${HOME_BATCH_SIZE} 个。`;
+        wrapper.appendChild(loadBox);
+
+        if (!_questionState.exhausted) {
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'zh-inline-btn';
+            loadBtn.textContent = `再加载 ${HOME_BATCH_SIZE} 个回答`;
+            loadBtn.addEventListener('click', () => loadMoreQuestionAndRender('list'));
+            wrapper.appendChild(loadBtn);
+        }
+
+        const sentinel = document.createElement('div');
+        sentinel.id = 'zh-question-lazy-sentinel';
+        sentinel.style.cssText = 'height:1px;margin-top:12px;';
+        wrapper.appendChild(sentinel);
+        if (!_questionState.exhausted && 'IntersectionObserver' in window) {
+            const observer = new IntersectionObserver(entries => {
+                if (entries.some(entry => entry.isIntersecting)) {
+                    observer.disconnect();
+                    loadMoreQuestionAndRender('list');
+                }
+            }, { rootMargin: '200px' });
+            observer.observe(sentinel);
+        }
+        setupImageToggles();
+        window.scrollTo(0, 0);
+    }
+
+    function setCurrentQuestionAnswer(index) {
+        const safeIndex = Math.max(0, Math.min(index, _questionState.answers.length - 1));
+        const answer = _questionState.answers[safeIndex];
+        _questionState.currentIndex = safeIndex;
+        _questionState.exitScrollY = Number.isFinite(answer?.sourceTop) ? answer.sourceTop : _questionState.originalScrollY;
+        persistCurrentQuestionCache();
+        return safeIndex;
+    }
+
+    async function navigateQuestionAnswer(delta) {
+        if (_questionState.view !== 'answer' || !_questionState.answers.length) return;
+        const nextIndex = _questionState.currentIndex + delta;
+        if (nextIndex < 0) return;
+        if (nextIndex >= _questionState.answers.length) {
+            if (!_questionState.exhausted) await loadMoreQuestionAndRender('answer');
+            return;
+        }
+        renderQuestionAnswer(nextIndex, false);
+    }
+
+    function findOriginalAnswerElement(answer) {
+        if (!answer?.key) return null;
+        return getAnswerItems().find((item, index) => getAnswerKey(item, index) === answer.key) || null;
+    }
+
+    function restoreQuestionAnswerPosition() {
+        if (!isQuestionPage() || _questionState.view !== 'answer') return;
+        const answer = _questionState.answers[_questionState.currentIndex];
+        const original = findOriginalAnswerElement(answer);
+        if (original) {
+            original.scrollIntoView({ block: 'start' });
+            return;
+        }
+
+        const targetTop = Number.isFinite(_questionState.exitScrollY)
+            ? _questionState.exitScrollY
+            : answer?.sourceTop;
+        if (Number.isFinite(targetTop)) {
+            if (targetTop > getDocumentHeight()) {
+                forceScrollToBottom();
+                setTimeout(() => window.scrollTo(0, Math.min(targetTop, getDocumentHeight())), 500);
+            } else {
+                window.scrollTo(0, targetTop);
+                setTimeout(() => window.scrollTo(0, targetTop), 120);
+            }
+        }
+    }
+
+    function isTypingTarget(target) {
+        const el = target instanceof Element ? target : target?.parentElement;
+        return !!el?.closest('input, textarea, select, [contenteditable="true"]');
+    }
+
+    function renderQuestionAnswer(index = 0, showAllAnswersButton = false) {
+        const wrapper = document.getElementById('immersive-wrapper');
+        const safeIndex = setCurrentQuestionAnswer(index);
+        const answer = _questionState.answers[safeIndex];
+        if (!wrapper || !answer) return;
+        _questionState.view = 'answer';
+        clearQuestionTranslations();
+        wrapper.classList.add('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendQuestionHeader(wrapper, showAllAnswersButton);
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'zh-question-toolbar zh-reader-top-nav';
+        if (_questionState.answers.length > 1 || !_questionState.exhausted) {
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'zh-inline-btn';
+            prevBtn.textContent = '上一篇';
+            prevBtn.disabled = safeIndex <= 0;
+            prevBtn.style.opacity = prevBtn.disabled ? '0.45' : '1';
+            prevBtn.addEventListener('click', () => navigateQuestionAnswer(-1));
+            toolbar.appendChild(prevBtn);
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'zh-inline-btn';
+            nextBtn.textContent = safeIndex >= _questionState.answers.length - 1 && !_questionState.exhausted
+                ? `加载后续 ${HOME_BATCH_SIZE} 个`
+                : '下一篇';
+            nextBtn.disabled = safeIndex >= _questionState.answers.length - 1 && _questionState.exhausted;
+            nextBtn.style.opacity = nextBtn.disabled ? '0.45' : '1';
+            nextBtn.addEventListener('click', () => navigateQuestionAnswer(1));
+            toolbar.appendChild(nextBtn);
+
+            const backBtn = document.createElement('button');
+            backBtn.className = 'zh-inline-btn';
+            backBtn.textContent = '返回回答列表';
+            backBtn.addEventListener('click', renderQuestionList);
+            toolbar.appendChild(backBtn);
+        }
+
+        const current = document.createElement('span');
+        current.className = 'zh-nav-current';
+        current.textContent = `当前第 ${safeIndex + 1} / ${_questionState.answers.length}`;
+        toolbar.appendChild(current);
+        wrapper.appendChild(toolbar);
+
+        const view = document.createElement('div');
+        view.className = 'zh-question-answer-view';
+        if (!mountLiveNode(answer.liveNode, view)) {
+            view.appendChild(cleanupAnswerClone(answer.clone.cloneNode(true)));
+        }
+        wrapper.appendChild(view);
+        setupImageToggles();
+        startArticleAdCleanup();
+        window.scrollTo(0, 0);
+    }
+
+    function clearHomeTranslations() {
+        clearQuestionTranslations();
+    }
+
+    function buildHomeWrapper() {
+        const wrapper = document.createElement('div');
+        wrapper.id = 'immersive-wrapper';
+        wrapper.className = 'zh-home-wrapper';
+        return wrapper;
+    }
+
+    function appendHomeHeader(container) {
+        const title = document.createElement('h1');
+        title.className = 'zh-home-title';
+        title.textContent = '知乎首页推荐';
+        container.appendChild(title);
+    }
+
+    function normalizeHomeGroups(groups = _homeState.groups) {
+        return (Array.isArray(groups) ? groups : [])
+            .map(group => (Array.isArray(group) ? group.filter(Boolean).slice(0, HOME_BATCH_SIZE) : []))
+            .filter(group => group.length);
+    }
+
+    function syncHomeItemsFromGroups() {
+        _homeState.groups = normalizeHomeGroups(_homeState.groups);
+        _homeState.items = _homeState.groups.flat();
+        return _homeState.items;
+    }
+
+    function getHomeGroupStartIndex(groupIndex = _homeState.currentGroupIndex) {
+        syncHomeItemsFromGroups();
+        return _homeState.groups.slice(0, Math.max(0, groupIndex)).reduce((sum, group) => sum + group.length, 0);
+    }
+
+    function getCurrentHomeGroup() {
+        syncHomeItemsFromGroups();
+        if (!_homeState.groups.length) return [];
+        _homeState.currentGroupIndex = Math.max(0, Math.min(_homeState.currentGroupIndex || 0, _homeState.groups.length - 1));
+        return _homeState.groups[_homeState.currentGroupIndex] || [];
+    }
+
+    function persistHomeFeedCache() {
+        syncHomeItemsFromGroups();
+        _homeFeedCache.set(getHomeCacheKey(), {
+            schemaVersion: 2,
+            groups: _homeState.groups,
+            items: _homeState.items,
+            currentIndex: _homeState.currentIndex || 0,
+            currentGroupIndex: _homeState.currentGroupIndex || 0,
+            currentIndexInGroup: _homeState.currentIndexInGroup || 0,
+            exitScrollY: _homeState.exitScrollY || _homeState.originalScrollY,
+            exhausted: _homeState.exhausted,
+            apiNextUrl: _homeState.apiNextUrl,
+            apiStarted: _homeState.apiStarted
+        });
+    }
+
+    function getHomeExistingKeys() {
+        return new Set(syncHomeItemsFromGroups().map(item => item.key).filter(Boolean));
+    }
+
+    function setHomeGroup(groupIndex) {
+        syncHomeItemsFromGroups();
+        if (!_homeState.groups.length) return;
+        _homeState.currentGroupIndex = Math.max(0, Math.min(groupIndex, _homeState.groups.length - 1));
+        _homeState.currentIndexInGroup = 0;
+        _homeState.currentIndex = getHomeGroupStartIndex(_homeState.currentGroupIndex);
+        persistHomeFeedCache();
+        renderHomeList();
+    }
+
+    async function loadNextHomeGroup(statusEl = null, options = {}) {
+        if (_homeState.loadingMore || _homeState.exhausted) return [];
+        _homeState.loadingMore = true;
+        const batchSize = options.batchSize || HOME_BATCH_SIZE;
+        const switchToNewGroup = options.switchToNewGroup !== false;
+        const previousGroupIndex = _homeState.currentGroupIndex || 0;
+
+        try {
+            const batch = await collectHomeFeedItemsFromApi(statusEl, batchSize, {
+                existingKeys: getHomeExistingKeys(),
+                label: options.label || '手动加载下一组首页推荐',
+                maxPages: options.maxPages || Math.max(4, Math.ceil(batchSize / HOME_BATCH_SIZE) + 4)
+            });
+            if (!batch.length) {
+                _homeState.exhausted = true;
+                persistHomeFeedCache();
+                return [];
+            }
+            _homeState.groups = normalizeHomeGroups(_homeState.groups.concat([batch]));
+            _homeState.currentGroupIndex = switchToNewGroup ? _homeState.groups.length - 1 : previousGroupIndex;
+            _homeState.currentIndexInGroup = switchToNewGroup ? 0 : (_homeState.currentIndexInGroup || 0);
+            _homeState.currentIndex = getHomeGroupStartIndex(_homeState.currentGroupIndex) + (_homeState.currentIndexInGroup || 0);
+            persistHomeFeedCache();
+            return batch;
+        } finally {
+            _homeState.loadingMore = false;
+            removeCollectOverlay();
+        }
+    }
+
+    async function collectMoreHomeItems(batchSize = HOME_BATCH_SIZE, statusEl = null) {
+        return loadNextHomeGroup(statusEl, { batchSize, switchToNewGroup: true });
+    }
+
+    async function loadMoreHomeAndRender() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        let status = document.getElementById('zh-home-load-status');
+        if (!status && wrapper) {
+            status = document.createElement('div');
+            status.id = 'zh-home-load-status';
+            status.className = 'zh-collect-status';
+            wrapper.appendChild(status);
+        }
+        if (status) status.textContent = `正在加载第 ${_homeState.groups.length + 1} 组首页推荐...`;
+        const keepScrollY = window.scrollY;
+        const batch = await loadNextHomeGroup(status, { switchToNewGroup: true });
+        renderHomeList();
+        requestAnimationFrame(() => window.scrollTo(0, batch.length ? 0 : keepScrollY));
+        return batch;
+    }
+
+    function renderHomeGroupToolbar(wrapper) {
+        const groups = normalizeHomeGroups(_homeState.groups);
+        const groupIndex = Math.max(0, Math.min(_homeState.currentGroupIndex || 0, Math.max(0, groups.length - 1)));
+        const toolbar = document.createElement('div');
+        toolbar.className = 'zh-question-toolbar zh-reader-top-nav';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'zh-inline-btn';
+        prevBtn.textContent = '上一组';
+        prevBtn.disabled = groupIndex <= 0;
+        prevBtn.style.opacity = prevBtn.disabled ? '0.45' : '1';
+        prevBtn.addEventListener('click', () => setHomeGroup(groupIndex - 1));
+        toolbar.appendChild(prevBtn);
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'zh-inline-btn';
+        nextBtn.textContent = '下一组';
+        nextBtn.disabled = groupIndex >= groups.length - 1;
+        nextBtn.style.opacity = nextBtn.disabled ? '0.45' : '1';
+        nextBtn.addEventListener('click', () => setHomeGroup(groupIndex + 1));
+        toolbar.appendChild(nextBtn);
+
+        if (!_homeState.exhausted) {
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'zh-inline-btn';
+            loadBtn.textContent = _homeState.loadingMore ? '加载中...' : '加载下一组';
+            loadBtn.disabled = _homeState.loadingMore;
+            loadBtn.style.opacity = loadBtn.disabled ? '0.45' : '1';
+            loadBtn.addEventListener('click', () => loadMoreHomeAndRender());
+            toolbar.appendChild(loadBtn);
+        }
+
+        const current = document.createElement('span');
+        current.className = 'zh-nav-current';
+        current.textContent = `第 ${groups.length ? groupIndex + 1 : 0} / ${groups.length} 组`;
+        toolbar.appendChild(current);
+        wrapper.appendChild(toolbar);
+    }
+
+    function renderHomeList() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) return;
+        _homeState.view = 'list';
+        restoreLiveMount();
+        clearHomeTranslations();
+        syncHomeItemsFromGroups();
+        wrapper.classList.add('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendHomeHeader(wrapper);
+        renderHomeGroupToolbar(wrapper);
+
+        const group = getCurrentHomeGroup();
+        const groupIndex = _homeState.currentGroupIndex || 0;
+        const status = document.createElement('div');
+        status.className = 'zh-collect-status';
+        status.textContent = group.length
+            ? `当前第 ${groupIndex + 1} 组，本组 ${group.length} 条；已加载 ${_homeState.items.length} 条。点击任意条目进入正文。`
+            : '没有采集到可展示的首页推荐。';
+        wrapper.appendChild(status);
+
+        const list = document.createElement('div');
+        list.className = 'zh-answer-list';
+        group.forEach((itemRecord, index) => {
+            const item = document.createElement('div');
+            item.className = 'zh-answer-list-item';
+            const avatarHTML = itemRecord.authorAvatar
+                ? `<img class="Avatar" src="${escapeHTML(itemRecord.authorAvatar)}" alt="" style="width:32px;height:32px;min-width:32px;border-radius:5px;object-fit:cover;box-shadow:none;margin-right:8px;vertical-align:middle;">`
+                : '';
+            const detail = [itemRecord.authorHeadline, itemRecord.stats, itemRecord.type].filter(Boolean).join(' · ');
+            item.innerHTML = `
+                <div class="zh-answer-list-meta" style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">${avatarHTML}<span>#${index + 1} · ${escapeHTML(itemRecord.author)}${detail ? ` · ${escapeHTML(detail)}` : ''}</span></div>
+                <div class="zh-answer-list-snippet"><strong>${escapeHTML(itemRecord.title)}</strong><br>${escapeHTML(itemRecord.snippet || '该推荐暂无可预览文本。')}</div>
+            `;
+            item.addEventListener('click', () => renderHomeItem(index, groupIndex));
+            list.appendChild(item);
+        });
+        wrapper.appendChild(list);
+
+        const loadBox = document.createElement('div');
+        loadBox.id = 'zh-home-load-status';
+        loadBox.className = 'zh-collect-status';
+        loadBox.textContent = _homeState.exhausted
+            ? `已加载 ${_homeState.items.length} 条，暂时没有更多推荐。`
+            : `更多推荐，请点击“加载下一组”。`;
+        wrapper.appendChild(loadBox);
+
+        if (!_homeState.exhausted) {
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'zh-inline-btn';
+            loadBtn.textContent = `加载下一组 ${HOME_BATCH_SIZE} 条`;
+            loadBtn.disabled = _homeState.loadingMore;
+            loadBtn.addEventListener('click', () => loadMoreHomeAndRender());
+            wrapper.appendChild(loadBtn);
+        }
+
+        setupImageToggles();
+        window.scrollTo(0, 0);
+    }
+
+    function setCurrentHomeItem(indexInGroup = 0, groupIndex = _homeState.currentGroupIndex) {
+        syncHomeItemsFromGroups();
+        if (!_homeState.groups.length) return { group: [], item: null, groupIndex: 0, indexInGroup: 0, globalIndex: 0 };
+        const safeGroupIndex = Math.max(0, Math.min(groupIndex, _homeState.groups.length - 1));
+        const group = _homeState.groups[safeGroupIndex] || [];
+        const safeIndex = Math.max(0, Math.min(indexInGroup, Math.max(0, group.length - 1)));
+        const item = group[safeIndex] || null;
+        const globalIndex = getHomeGroupStartIndex(safeGroupIndex) + safeIndex;
+        _homeState.currentGroupIndex = safeGroupIndex;
+        _homeState.currentIndexInGroup = safeIndex;
+        _homeState.currentIndex = globalIndex;
+        _homeState.exitScrollY = Number.isFinite(item?.sourceTop) ? item.sourceTop : _homeState.originalScrollY;
+        persistHomeFeedCache();
+        return { group, item, groupIndex: safeGroupIndex, indexInGroup: safeIndex, globalIndex };
+    }
+
+    function navigateHomeItem(delta) {
+        if (_homeState.view !== 'item') return;
+        const group = getCurrentHomeGroup();
+        const nextIndex = (_homeState.currentIndexInGroup || 0) + delta;
+        if (nextIndex < 0 || nextIndex >= group.length) return;
+        renderHomeItem(nextIndex, _homeState.currentGroupIndex);
+    }
+
+    function renderHomeItem(indexInGroup = 0, groupIndex = _homeState.currentGroupIndex) {
+        const wrapper = document.getElementById('immersive-wrapper');
+        const position = setCurrentHomeItem(indexInGroup, groupIndex);
+        const itemRecord = position.item;
+        if (!wrapper || !itemRecord) return;
+        _homeState.view = 'item';
+        clearHomeTranslations();
+        wrapper.classList.add('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendHomeHeader(wrapper);
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'zh-question-toolbar zh-reader-top-nav';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'zh-inline-btn';
+        prevBtn.textContent = '上一篇';
+        prevBtn.disabled = position.indexInGroup <= 0;
+        prevBtn.style.opacity = prevBtn.disabled ? '0.45' : '1';
+        prevBtn.addEventListener('click', () => navigateHomeItem(-1));
+        toolbar.appendChild(prevBtn);
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'zh-inline-btn';
+        nextBtn.textContent = '下一篇';
+        nextBtn.disabled = position.indexInGroup >= position.group.length - 1;
+        nextBtn.style.opacity = nextBtn.disabled ? '0.45' : '1';
+        nextBtn.addEventListener('click', () => navigateHomeItem(1));
+        toolbar.appendChild(nextBtn);
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'zh-inline-btn';
+        backBtn.textContent = '返回推荐列表';
+        backBtn.addEventListener('click', renderHomeList);
+        toolbar.appendChild(backBtn);
+
+        const current = document.createElement('span');
+        current.className = 'zh-nav-current';
+        current.textContent = `当前第 ${position.indexInGroup + 1} / ${position.group.length}`;
+        toolbar.appendChild(current);
+        wrapper.appendChild(toolbar);
+
+        const view = document.createElement('div');
+        view.className = 'zh-home-card-view';
+        if (!mountLiveNode(itemRecord.liveNode, view)) {
+            view.appendChild(cleanupHomeClone(itemRecord.clone.cloneNode(true)));
+        }
+        wrapper.appendChild(view);
+        setupImageToggles();
+        startArticleAdCleanup();
+        window.scrollTo(0, 0);
+    }
+
+    function createWikiRunConfig() {
+        return {
+            apiHost: config.apiHost || '',
+            apiModel: config.apiModel || '',
+            apiKey: config.apiKey || '',
+            wikiMaxItems: Number.isFinite(Number(config.wikiMaxItems)) ? Math.max(1, Number(config.wikiMaxItems)) : 100,
+            wikiConcurrency: Number.isFinite(Number(config.wikiConcurrency)) ? Math.max(0, Number(config.wikiConcurrency)) : 20,
+            wikiRpm: Number.isFinite(Number(config.wikiRpm)) ? Math.max(0, Number(config.wikiRpm)) : 300,
+            wikiFinalSynthesis: config.wikiFinalSynthesis !== false
+        };
+    }
+
+    function getWikiRunConfig() {
+        return wikiState.runConfig || createWikiRunConfig();
+    }
+
+    function getWikiLimit(name, fallback, runConfig = getWikiRunConfig()) {
+        const value = Number(runConfig?.[name]);
+        return Number.isFinite(value) ? Math.max(0, value) : fallback;
+    }
+
+    function createWikiRunId(date = new Date()) {
+        return `wiki-${date.getTime()}-${Math.random().toString(16).slice(2, 8)}`;
+    }
+
+    function formatWikiTime(value = new Date()) {
+        const date = value instanceof Date ? value : new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+    }
+
+    function loadWikiHistory() {
+        try {
+            const raw = localStorage.getItem(WIKI_HISTORY_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(parsed)) return [];
+            const now = new Date().toISOString();
+            return parsed.map(record => {
+                if (record?.status !== 'running') return record;
+                return {
+                    ...record,
+                    status: 'interrupted',
+                    finishedAt: record.finishedAt || now,
+                    progressMessage: `页面刷新或脚本重载前中断：${record.progressMessage || record.phase || '未知阶段'}`
+                };
+            });
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：Wiki 历史读取失败', err);
+            return [];
+        }
+    }
+
+    function saveWikiHistory(history = wikiState.history) {
+        let records = (Array.isArray(history) ? history : [])
+            .slice(0, WIKI_HISTORY_MAX)
+            .map(record => ({
+                ...record,
+                log: Array.isArray(record.log) ? record.log.slice(-260) : []
+            }));
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                localStorage.setItem(WIKI_HISTORY_KEY, JSON.stringify(records));
+                wikiState.history = records;
+                return true;
+            } catch (err) {
+                if (records.length > 4) {
+                    records = records.slice(0, Math.max(4, records.length - 3));
+                } else {
+                    records = records.map((record, index) => {
+                        if (index === 0) return record;
+                        return {
+                            ...record,
+                            markdown: record.markdown ? `${String(record.markdown).slice(0, 2000)}\n\n> 历史记录过大，此条 Markdown 已截断。` : ''
+                        };
+                    });
+                }
+            }
+        }
+        return false;
+    }
+
+    function ensureWikiHistory() {
+        if (!Array.isArray(wikiState.history) || !wikiState.history.length) {
+            wikiState.history = loadWikiHistory();
+        }
+        return wikiState.history;
+    }
+
+    function upsertWikiHistoryRecord(patch) {
+        ensureWikiHistory();
+        const runId = patch.runId || wikiState.runId;
+        if (!runId) return null;
+        const existingIndex = wikiState.history.findIndex(record => record.runId === runId);
+        const existing = existingIndex >= 0 ? wikiState.history[existingIndex] : {};
+        const next = {
+            ...existing,
+            ...patch,
+            runId,
+            updatedAt: new Date().toISOString()
+        };
+
+        if (existingIndex >= 0) wikiState.history.splice(existingIndex, 1);
+        wikiState.history.unshift(next);
+        wikiState.history = wikiState.history.slice(0, WIKI_HISTORY_MAX);
+        saveWikiHistory(wikiState.history);
+        return next;
+    }
+
+    function recordWikiProgress(message, phase = '') {
+        wikiState.progressMessage = message;
+        wikiState.phase = phase || wikiState.phase;
+        const entry = {
+            time: new Date().toISOString(),
+            phase: phase || wikiState.phase || 'running',
+            message
+        };
+        wikiState.log = Array.isArray(wikiState.log) ? wikiState.log.concat(entry).slice(-260) : [entry];
+        console.info(`[Zhihu Wiki] ${message}`);
+
+        if (wikiState.runId) {
+            upsertWikiHistoryRecord({
+                status: wikiState.running ? (wikiState.paused ? 'paused' : 'running') : (wikiState.finished ? 'finished' : 'pending'),
+                startedAt: wikiState.startedAt ? wikiState.startedAt.toISOString?.() || wikiState.startedAt : '',
+                finishedAt: wikiState.finishedAt ? wikiState.finishedAt.toISOString?.() || wikiState.finishedAt : '',
+                phase: wikiState.phase,
+                progressMessage: message,
+                itemCount: wikiState.items.length || 0,
+                errorCount: wikiState.errors.length || 0,
+                log: wikiState.log,
+                runConfigSnapshot: wikiState.runConfig || null
+            });
+        }
+
+        const logEl = document.getElementById('zh-wiki-live-log');
+        if (logEl) logEl.textContent = wikiState.log.map(log => `[${formatWikiTime(log.time)}] ${log.message}`).join('\n');
+    }
+
+    function finishWikiHistoryRecord(status, extra = {}) {
+        wikiState.finishedAt = new Date();
+        upsertWikiHistoryRecord({
+            status,
+            finishedAt: wikiState.finishedAt.toISOString(),
+            phase: extra.phase || wikiState.phase || status,
+            progressMessage: extra.progressMessage || wikiState.progressMessage || '',
+            itemCount: wikiState.items.length || 0,
+            errorCount: wikiState.errors.length || 0,
+            errors: wikiState.errors.slice(-20),
+            log: wikiState.log,
+            markdown: extra.markdown || wikiState.markdown || '',
+            runConfigSnapshot: wikiState.runConfig || null
+        });
+    }
+
+    function setOriginalPageVisibleForWiki(visible) {
+        document.querySelectorAll('.zh-hidden-by-immersive').forEach(child => {
+            child.style.display = visible ? (child.dataset.origDisplay || '') : 'none';
+        });
+    }
+
+    function updateWikiProgress(message, phase = '') {
+        recordWikiProgress(message, phase);
+        const text = `信息流 Wiki：${message}`;
+        const el = document.getElementById('zh-wiki-progress');
+        if (el) el.textContent = text;
+        showCollectOverlay(text);
+    }
+
+    function setWikiPaused(paused) {
+        if (!wikiState.running) return;
+        wikiState.paused = !!paused;
+        const msg = wikiState.paused
+            ? '已暂停调度；已发出的请求会继续完成，新的请求会等待恢复。'
+            : '已恢复调度，继续发起剩余请求。';
+        updateWikiProgress(msg, wikiState.phase || 'running');
+        renderWikiDashboard();
+    }
+
+    async function waitWhileWikiPaused() {
+        while (wikiState.running && wikiState.paused) {
+            await sleep(500);
+        }
+    }
+
+    async function runLimited(tasks, options = {}) {
+        const concurrency = Number(options.concurrency) > 0 ? Number(options.concurrency) : tasks.length || 1;
+        const rpm = Number(options.rpm) > 0 ? Number(options.rpm) : 0;
+        const interval = rpm > 0 ? Math.ceil(60000 / rpm) : 0;
+        const results = new Array(tasks.length);
+        let nextIndex = 0;
+        let completed = 0;
+        let started = 0;
+        let nextStartAt = Date.now();
+
+        async function waitForStartSlot() {
+            if (!interval) return;
+            const now = Date.now();
+            const wait = Math.max(0, nextStartAt - now);
+            nextStartAt = Math.max(nextStartAt, now) + interval;
+            if (wait > 0) await sleep(wait);
+        }
+
+        const workers = Array.from({ length: Math.min(concurrency, tasks.length || 1) }, async () => {
+            while (nextIndex < tasks.length) {
+                if (options.pauseable !== false) await waitWhileWikiPaused();
+                const currentIndex = nextIndex++;
+                await waitForStartSlot();
+                if (options.pauseable !== false) await waitWhileWikiPaused();
+                started++;
+                if (typeof options.onStart === 'function') options.onStart(started, tasks.length, currentIndex);
+                try {
+                    results[currentIndex] = await tasks[currentIndex]();
+                } catch (err) {
+                    results[currentIndex] = { error: err };
+                } finally {
+                    completed++;
+                    if (typeof options.onProgress === 'function') options.onProgress(completed, tasks.length, currentIndex);
+                }
+            }
+        });
+
+        await Promise.all(workers);
+        return results;
+    }
+
+    function getUserscriptXHR() {
+        if (typeof GM_xmlhttpRequest === 'function') return GM_xmlhttpRequest;
+        if (typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function') return GM.xmlHttpRequest.bind(GM);
+        return null;
+    }
+
+    function gmFetchText(url) {
+        return new Promise((resolve, reject) => {
+            if (!url) return reject(new Error('缺少 URL'));
+
+            const xhr = getUserscriptXHR();
+            if (xhr) {
+                xhr({
+                    method: 'GET',
+                    url,
+                    timeout: 20000,
+                    anonymous: false,
+                    responseType: 'text',
+                    headers: {
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Cache-Control': 'no-cache'
+                    },
+                    onload: res => {
+                        if (res.status >= 200 && res.status < 300) resolve(res.responseText || '');
+                        else reject(new Error(`HTTP ${res.status}`));
+                    },
+                    onerror: err => reject(new Error(`GM 跨域抓取失败：${err?.error || err?.message || '未知错误'}`)),
+                    ontimeout: () => reject(new Error('页面抓取超时'))
+                });
+                return;
+            }
+
+            fetch(url, { credentials: 'include' })
+                .then(res => res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`)))
+                .then(resolve)
+                .catch(err => reject(new Error(`原生 fetch 跨域失败：${err.message || err}`)));
+        });
+    }
+
+    function gmFetchJSON(url) {
+        return new Promise((resolve, reject) => {
+            if (!url) return reject(new Error('缺少 URL'));
+
+            const xhr = getUserscriptXHR();
+            if (xhr) {
+                xhr({
+                    method: 'GET',
+                    url,
+                    timeout: 20000,
+                    anonymous: false,
+                    responseType: 'json',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Cache-Control': 'no-cache'
+                    },
+                    onload: res => {
+                        if (res.status < 200 || res.status >= 300) {
+                            reject(new Error(`HTTP ${res.status}`));
+                            return;
+                        }
+                        if (res.response && typeof res.response === 'object') {
+                            resolve(res.response);
+                            return;
+                        }
+                        try {
+                            resolve(JSON.parse(res.responseText || '{}'));
+                        } catch (err) {
+                            reject(new Error(`JSON 解析失败：${err.message}`));
+                        }
+                    },
+                    onerror: err => reject(new Error(`GM API 请求失败：${err?.error || err?.message || '未知错误'}`)),
+                    ontimeout: () => reject(new Error('API 请求超时'))
+                });
+                return;
+            }
+
+            fetch(url, {
+                credentials: 'include',
+                headers: { 'Accept': 'application/json, text/plain, */*' }
+            })
+                .then(res => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+                .then(resolve)
+                .catch(err => reject(new Error(`原生 fetch API 请求失败：${err.message || err}`)));
+        });
+    }
+
+    function getNodeText(root, selector) {
+        const node = root.querySelector(selector);
+        return node ? normalizeText(node.textContent || '') : '';
+    }
+
+    function getNodesText(root, selector, limit = 6) {
+        return Array.from(root.querySelectorAll(selector))
+            .slice(0, limit)
+            .map(node => normalizeText(node.textContent || ''))
+            .filter(Boolean)
+            .join('\n\n');
+    }
+
+    function normalizeText(text) {
+        return String(text || '')
+            .replace(/\u200b/g, '')
+            .replace(/\r/g, '\n')
+            .replace(/[ \t\f\v]+/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    function stripHTMLToText(html) {
+        if (!html) return '';
+        const doc = new DOMParser().parseFromString(String(html), 'text/html');
+        doc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+        return normalizeText(doc.body?.textContent || doc.documentElement?.textContent || html);
+    }
+
+    function parseJSONLoose(text) {
+        const raw = String(text || '').trim();
+        if (!raw) return null;
+        try {
+            return JSON.parse(raw);
+        } catch (err) {
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (!match) return null;
+            try { return JSON.parse(match[0]); } catch (innerErr) { return null; }
+        }
+    }
+
+    function getZhihuInitialState(doc) {
+        const candidates = [
+            doc.querySelector('#js-initialData')?.textContent,
+            doc.querySelector('script[type="application/json"]')?.textContent,
+            ...Array.from(doc.querySelectorAll('script')).map(script => script.textContent || '').filter(text => /initialState|entities|answers|articles|questions/.test(text))
+        ].filter(Boolean);
+
+        for (const text of candidates) {
+            const parsed = parseJSONLoose(text);
+            const state = parsed?.initialState || parsed?.props?.pageProps?.initialState || parsed;
+            if (state?.entities) return state;
+        }
+        return null;
+    }
+
+    function getEntityList(initialState, name) {
+        const values = initialState?.entities?.[name];
+        return values && typeof values === 'object' ? Object.values(values) : [];
+    }
+
+    function getUrlIds(url) {
+        return {
+            questionId: url.match(/\/question\/(\d+)/)?.[1] || '',
+            answerId: url.match(/\/answer\/(\d+)/)?.[1] || '',
+            articleId: url.match(/\/p\/(\d+)/)?.[1] || ''
+        };
+    }
+
+    function pickEntityById(list, id) {
+        if (!id) return list[0] || null;
+        return list.find(item => String(item?.id || item?.token || item?.url || '').includes(id)) || list[0] || null;
+    }
+
+    function getWikiContentKind(url) {
+        if (/\/p\//.test(url)) return 'post';
+        if (/\/question\/\d+\/answer\//.test(url)) return 'answer';
+        if (/\/question\//.test(url)) return 'question';
+        return 'unknown';
+    }
+
+    function extractWikiContentFromHTML(html, url, fallbackTitle = '') {
+        const doc = new DOMParser().parseFromString(html || '', 'text/html');
+        const kind = getWikiContentKind(url);
+        const ids = getUrlIds(url);
+        const initialState = getZhihuInitialState(doc);
+        doc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+        const questionEntity = pickEntityById(getEntityList(initialState, 'questions'), ids.questionId);
+        const answerEntity = pickEntityById(getEntityList(initialState, 'answers'), ids.answerId);
+        const articleEntity = pickEntityById(getEntityList(initialState, 'articles'), ids.articleId);
+
+        const title = getNodeText(doc, 'h1.QuestionHeader-title')
+            || getNodeText(doc, '.Post-Title')
+            || getNodeText(doc, '.ContentItem-title')
+            || getNodeText(doc, 'h1')
+            || stripHTMLToText(articleEntity?.title)
+            || stripHTMLToText(questionEntity?.title)
+            || fallbackTitle;
+
+        const questionDetail = getNodeText(doc, '.QuestionRichText.QuestionRichText--expandable')
+            || getNodeText(doc, '.QuestionRichText')
+            || stripHTMLToText(questionEntity?.detail)
+            || stripHTMLToText(questionEntity?.excerpt);
+
+        const questionTitle = stripHTMLToText(questionEntity?.title) || (kind === 'answer' || kind === 'question' ? title : '');
+
+        let articleText = '';
+        let answerText = '';
+        let questionAnswersText = '';
+        if (kind === 'post') {
+            articleText = stripHTMLToText(articleEntity?.content)
+                || stripHTMLToText(articleEntity?.excerpt)
+                || getNodeText(doc, '.Post-Main .RichText')
+                || getNodeText(doc, '.Post-RichTextContainer')
+                || getNodeText(doc, '.Post-Main');
+        } else if (kind === 'answer') {
+            answerText = stripHTMLToText(answerEntity?.content)
+                || stripHTMLToText(answerEntity?.excerpt)
+                || getNodeText(doc, '.QuestionAnswer-content .RichText')
+                || getNodeText(doc, '.QuestionAnswer-content')
+                || getNodeText(doc, '.AnswerItem .RichText')
+                || getNodeText(doc, '.AnswerItem');
+        } else if (kind === 'question') {
+            questionAnswersText = getNodesText(doc, '.AnswerItem .RichText, .AnswerItem', 3)
+                || getEntityList(initialState, 'answers').slice(0, 3).map(answer => stripHTMLToText(answer?.content || answer?.excerpt)).filter(Boolean).join('\n\n');
+        } else {
+            articleText = getNodeText(doc, '.RichText')
+                || getNodeText(doc, '.RichContent-inner')
+                || getNodeText(doc, 'article')
+                || getNodeText(doc, 'body');
+        }
+
+        const textParts = [];
+        if (kind === 'answer') {
+            textParts.push(`【原问题】\n${questionTitle || title || fallbackTitle}`);
+            if (questionDetail) textParts.push(`【问题补充】\n${questionDetail}`);
+            if (answerText) textParts.push(`【单个回答正文】\n${answerText}`);
+        } else if (kind === 'question') {
+            textParts.push(`【问题】\n${questionTitle || title || fallbackTitle}`);
+            if (questionDetail) textParts.push(`【问题补充】\n${questionDetail}`);
+            if (questionAnswersText) textParts.push(`【页面回答摘录】\n${questionAnswersText}`);
+        } else if (kind === 'post') {
+            textParts.push(`【文章标题】\n${title || fallbackTitle}`);
+            if (articleText) textParts.push(`【文章正文】\n${articleText}`);
+        } else {
+            textParts.push([title, articleText].filter(Boolean).join('\n\n'));
+        }
+
+        const text = normalizeText(textParts.filter(Boolean).join('\n\n'));
+        return {
+            contentKind: kind,
+            title: title || fallbackTitle,
+            questionTitle,
+            questionDetail,
+            answerText,
+            articleText,
+            questionAnswersText,
+            text,
+            extractedLength: text.length
+        };
+    }
+
+    function hasEnoughWikiStructuredContent(structured) {
+        if (!structured) return false;
+        const kind = structured.contentKind || 'unknown';
+        if (kind === 'answer') return normalizeText(structured.answerText || '').length >= 80;
+        if (kind === 'post') return normalizeText(structured.articleText || '').length >= 80;
+        if (kind === 'question') {
+            return normalizeText(structured.questionAnswersText || '').length >= 80
+                || normalizeText(structured.questionDetail || '').length >= 140;
+        }
+        return normalizeText(structured.text || '').length >= 80;
+    }
+
+    function buildFallbackWikiContent(item, error = '') {
+        const kind = getWikiContentKind(item.url || item.key || '');
+        const text = normalizeText(item.text || item.snippet || '');
+        const anomalyReason = !item.url
+            ? '未识别到可抓取的知乎正文 URL，可能是作者主页、账号页、广告或卡片结构异常。'
+            : error;
+        const questionTitle = kind === 'answer' || kind === 'question' ? item.title : '';
+        return {
+            contentKind: kind,
+            title: item.title || '知乎推荐内容',
+            questionTitle,
+            questionDetail: '',
+            answerText: kind === 'answer' ? text : '',
+            articleText: kind === 'post' || kind === 'unknown' ? text : '',
+            questionAnswersText: kind === 'question' ? text : '',
+            text,
+            extractedLength: text.length,
+            extractError: anomalyReason,
+            isCollectionAnomaly: !item.url || text.length < 80,
+            anomalyReason
+        };
+    }
+
+    function buildApiFallbackWikiContent(item, warning = '') {
+        const url = item.url || item.key || '';
+        const structured = buildFallbackWikiContent(item, warning || '页面抓取失败，已使用首页推荐 API 返回的正文。');
+        return {
+            ...structured,
+            source: '推荐 API 正文',
+            error: '',
+            warning: warning || '',
+            isCollectionAnomaly: !url || !isZhihuContentUrl(url) || structured.text.length < 80
+        };
+    }
+
+    async function fetchFullTextForItem(item) {
+        const url = item.url || item.key;
+        const fallback = item.text || item.snippet || '';
+        if (!url || !/^https?:\/\//.test(url)) return { ...buildFallbackWikiContent(item, 'URL 不可用'), text: fallback, source: '卡片回退', error: 'URL 不可用' };
+        const canUseApiContent = item.apiHasFullContent && isZhihuContentUrl(url) && normalizeText(fallback).length >= 80;
+
+        try {
+            const html = await gmFetchText(url);
+            const structured = extractWikiContentFromHTML(html, url, item.title);
+            const enough = hasEnoughWikiStructuredContent(structured);
+            if (enough) return { ...structured, source: '全文抓取' };
+            if (canUseApiContent) return buildApiFallbackWikiContent(item, '页面 HTML 正文解析过短，已使用推荐 API content 字段。');
+            return { ...buildFallbackWikiContent(item, '正文过短'), source: '卡片回退', error: '正文过短' };
+        } catch (err) {
+            if (canUseApiContent) return buildApiFallbackWikiContent(item, `页面抓取失败：${err.message}`);
+            return { ...buildFallbackWikiContent(item, err.message), source: '卡片回退', error: err.message };
+        }
+    }
+
+    function parseJSONFromText(text) {
+        const raw = String(text || '').trim();
+        try {
+            return JSON.parse(raw);
+        } catch (err) {
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) {
+                try { return JSON.parse(match[0]); } catch (innerErr) {}
+            }
+        }
+        return null;
+    }
+
+    function toArrayField(value, fallback = []) {
+        if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+        if (!value) return fallback;
+        return String(value).split(/\n|[；;]/).map(item => item.replace(/^[-*、\d.\s]+/, '').trim()).filter(Boolean);
+    }
+
+    function normalizeWikiTags(value) {
+        const tags = Array.isArray(value) ? value : String(value || '').split(/[，,、\s]+/);
+        return tags
+            .map(tag => String(tag || '').replace(/^#/, '').trim())
+            .filter(Boolean)
+            .slice(0, 6);
+    }
+
+    function clipWikiText(value, max = 90) {
+        const text = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length <= max) return text;
+        return `${text.slice(0, Math.max(1, max - 1)).trim()}…`;
+    }
+
+    function compactWikiArray(value, maxItems = 3, maxChars = 90) {
+        return toArrayField(value)
+            .map(item => clipWikiText(item, maxChars))
+            .filter(Boolean)
+            .slice(0, maxItems);
+    }
+
+    function normalizeWikiChoice(value, allowed, fallback) {
+        const text = String(value || '').trim();
+        return allowed.includes(text) ? text : fallback;
+    }
+
+    function isUsableWikiUrl(value) {
+        return /^https?:\/\//.test(value || '') && isZhihuContentUrl(value);
+    }
+
+    function sameWikiMetaText(a, b) {
+        const left = normalizeText(a || '').replace(/[?？!！。，“”"']/g, '').toLowerCase();
+        const right = normalizeText(b || '').replace(/[?？!！。，“”"']/g, '').toLowerCase();
+        return !!left && !!right && left === right;
+    }
+
+    function getWikiDisplayAuthor(item) {
+        const author = normalizeText(item?.author || '');
+        const title = normalizeText(item?.title || item?.questionTitle || '');
+        if (!author || author === '未知作者') return '未知作者';
+        if (author.length > 40 || sameWikiMetaText(author, title)) return '未知作者';
+        return author;
+    }
+
+    function formatWikiSourceLink(item) {
+        const url = item?.url || item?.key || '';
+        return isUsableWikiUrl(url) ? `[打开原文](${url})` : '未识别';
+    }
+
+    function cleanWikiSynthesisMarkdown(text) {
+        const lines = String(text || '')
+            .replace(/\r/g, '\n')
+            .split('\n')
+            .map(line => line.trimEnd());
+        const dropPatterns = [
+            /^Generated by\b/i,
+            /^#\s*知乎首页学习卡片库/,
+            /^知乎首页学习卡片库\b/,
+            /^##\s*总览[:：]/,
+            /^今日知识库编辑总览/,
+            /^生成时间[:：]/,
+            /^条目数量[:：]/,
+            /^日期[:：]/,
+            /^\d+[.、]\s*(信息流趋势雷达|学习萃取总览)/,
+            /^[🧩📂🔍]?\s*(可复用模型|重要概念簇|值得深挖的问题)\s*$/,
+            /^编辑笔记[:：]?/
+        ];
+        return lines
+            .filter(line => !dropPatterns.some(pattern => pattern.test(line.trim())))
+            .join('\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    function makeAnomalyLearningCard(item, reason = '') {
+        const title = item.title || '采集异常条目';
+        return {
+            ...item,
+            wikiContentType: '采集异常',
+            wikiOneSentence: '未能可靠取得正文，不进入正式学习卡片库。',
+            wikiCorePoints: ['该条目需要补全文后再判断学习价值。'],
+            wikiTransferScenarios: [],
+            wikiEvidenceExamples: [],
+            wikiJudgment: '待补全文',
+            wikiTags: ['采集异常', '待补全文'],
+            wikiCredibility: '需核验',
+            wikiCredibilityReason: reason || item.anomalyReason || item.fetchError || '正文缺失或来源 URL 异常。',
+            wikiSummary: '未能可靠取得正文，不进入正式学习卡片库。',
+            wikiValue: '待补全文后再判断。',
+            title
+        };
+    }
+
+    function getWikiLearningCardSystemPrompt() {
+        return `你是我的学习型知识库整理助手。你的目标是把知乎内容整理成短、准、可复查的学习卡片；第一职责是降噪，不是把普通观点包装成宏大理论。
+
+请输出严格 JSON，不要 Markdown，不要代码块。字段如下：
+contentType：只能选 概念 / 方法 / 案例 / 观点 / 争议 / 梗文化 / 采集异常 / 待核验
+oneSentence：35到80字，只写这条内容最值得带走的一个判断
+corePoints：2到3条，每条不超过70字；只写原文支撑得住的机制、变量、判断标准、反例或操作步骤
+transferScenarios：0到2个，每条不超过45字；没有明确迁移价值就返回空数组
+evidenceExamples：0到2条，每条不超过60字；只摘原文里的具体例子、数字、案例或论据
+judgment：只能选 正式入库 / 只作素材 / 待补全文 / 丢弃
+tags：3到5个概念型中文标签，避免 AI产品体验、用户体验、产品生态 这类泛标签
+credibility：只能选 高 / 中 / 低 / 需核验
+credibilityReason：一句话说明可信度原因
+
+重要要求：
+- 如果正文缺失、像作者主页/账号页/来源索引，不要强行总结观点，标为 采集异常，judgment 为 待补全文。
+- 只依据输入内容，不要补充外部事实、日期、论文、机构、人物身份或统计数字。
+- 不要给普通说法强行起名，不要滥用“模型、机制、效应、范式、底层架构、系统性纠偏、夺回掌控权”等包装词；除非原文明确提出。
+- 不要写“具有观察价值”“适合记录为典型案例”“值得深挖”这种空泛话。
+- 正式入库必须满足：有清晰方法/模型/判断标准/反例，且至少有一个具体证据或例子。否则优先只作素材。
+- 对医学、营养、法律、金融、政治、现实事件、心理诊断类内容保持保守；知乎个人经验不能标为高可信。
+- 不要把知乎观点当事实；涉及现实事件、医学、法律、政治、金融时，可信度必须保守，必要时标为 需核验。
+- 标题、作者、链接等元信息只来自用户输入，不要自行改写或猜测。
+- 输出要适合 Obsidian/Notion 长期复习，而不是日报。`;
+    }
+
+    function getWikiSynthesisSystemPrompt() {
+        return `你是个人学习型知识库编辑。请只基于用户给出的学习卡片生成 Markdown 片段。
+
+输出结构固定为：
+### 信息流趋势
+- 1到3条，说明这些条目共同指向什么主题；不要写宏大口号。
+
+### 今日可复用
+- 2到5条，每条用“**名称**：具体用法/判断标准”的格式；名称要朴素，不要生造学术词。
+
+### 需要复查
+- 0到3条，只列需要补全文、证据不足或高风险领域的点；没有就写“无”。
+
+限制：
+- 不要输出一级标题、二级标题、生成时间、条目数量、模型署名或任何日期，外层模板会处理。
+- 不要复述全部条目，不要扩写外部背景，不要发明新事实。
+- 避免“系统性纠偏、底层架构认知、反直觉、认知跃迁”等泛化套话。
+- 禁止使用“信息流趋势雷达、学习萃取总览、可复用模型、重要概念簇、值得深挖的问题、编辑笔记”这些旧版栏目名。`;
+    }
+
+    async function summarizeWikiItem(item, runConfig = getWikiRunConfig()) {
+        if (item.isCollectionAnomaly || item.fullTextSource === '卡片回退' || !item.url || !isZhihuContentUrl(item.url)) {
+            return makeAnomalyLearningCard(item, item.anomalyReason || item.fetchError || '全文抓取失败或 URL 不是知乎正文页。');
+        }
+
+        const kind = item.contentKind || getWikiContentKind(item.url || item.key || '');
+        const sys = getWikiLearningCardSystemPrompt();
+        const buildPrompt = limit => {
+            if (kind === 'answer') {
+                const answer = normalizeText(item.answerText || item.fullText || item.text || item.snippet || '').slice(0, limit);
+                const questionDetail = normalizeText(item.questionDetail || '').slice(0, 1600);
+                return [
+                    `来源类型：知乎单个回答`,
+                    `链接：${item.url || item.key}`,
+                    `作者：${item.author || '未知作者'}`,
+                    `原问题：${item.questionTitle || item.title || '未知问题'}`,
+                    questionDetail ? `问题补充：${questionDetail}` : '',
+                    `单个回答正文：\n${answer}`,
+                    item.fullTextSource === '卡片回退' ? `注意：全文抓取失败，本次使用首页卡片可见文本，可能不是完整回答。` : ''
+                ].filter(Boolean).join('\n\n');
+            }
+
+            if (kind === 'question') {
+                const answers = normalizeText(item.questionAnswersText || item.fullText || item.text || item.snippet || '').slice(0, limit);
+                const questionDetail = normalizeText(item.questionDetail || '').slice(0, 1800);
+                return [
+                    `来源类型：知乎问题页`,
+                    `链接：${item.url || item.key}`,
+                    `问题：${item.questionTitle || item.title || '未知问题'}`,
+                    questionDetail ? `问题补充：${questionDetail}` : '',
+                    answers ? `页面回答摘录：\n${answers}` : ''
+                ].filter(Boolean).join('\n\n');
+            }
+
+            const source = normalizeText(item.articleText || item.fullText || item.text || item.snippet || '').slice(0, limit);
+            return `来源类型：${item.type || '知乎内容'}\n标题：${item.title}\n作者：${item.author}\n链接：${item.url || item.key}\n\n正文：\n${source}`;
+        };
+
+        let raw = '';
+        try {
+            raw = await callLLMWithRetry(sys, buildPrompt(9000), { retries: 2, ...runConfig });
+        } catch (err) {
+            if (!isContextTooLongError(err)) throw err;
+            raw = await callLLMWithRetry(sys, buildPrompt(3500), { retries: 1, ...runConfig });
+        }
+        const data = parseJSONFromText(raw) || {};
+        const tags = normalizeWikiTags(data.tags).slice(0, 5);
+        const oneSentence = clipWikiText(data.oneSentence || data.summary || raw || item.snippet || '', 90);
+        const judgment = normalizeWikiChoice(data.judgment, ['正式入库', '只作素材', '待补全文', '丢弃'], '只作素材');
+        const contentType = normalizeWikiChoice(data.contentType, ['概念', '方法', '案例', '观点', '争议', '梗文化', '采集异常', '待核验'], '观点');
+        const credibility = normalizeWikiChoice(data.credibility, ['高', '中', '低', '需核验'], '中');
+
+        return {
+            ...item,
+            wikiContentType: contentType,
+            wikiOneSentence: oneSentence,
+            wikiCorePoints: compactWikiArray(data.corePoints, 3, 90),
+            wikiTransferScenarios: compactWikiArray(data.transferScenarios, 2, 60),
+            wikiEvidenceExamples: compactWikiArray(data.evidenceExamples, 2, 70),
+            wikiJudgment: judgment,
+            wikiTags: tags,
+            wikiCredibility: credibility,
+            wikiCredibilityReason: clipWikiText(data.credibilityReason || '来自知乎内容，需结合原文语境判断。', 90),
+            wikiSummary: oneSentence,
+            wikiValue: judgment
+        };
+    }
+
+    async function buildWikiSynthesis(items, runConfig = getWikiRunConfig()) {
+        if (runConfig.wikiFinalSynthesis === false || !items.length) return '';
+        const validItems = items.filter(item => !['采集异常', '待补全文', '丢弃'].includes(item.wikiJudgment) && item.wikiContentType !== '采集异常');
+        if (!validItems.length) return '> 本次没有足够可靠的条目生成学习总览。';
+        const digest = validItems.map((item, index) => {
+            const tags = item.wikiTags?.length ? ` 标签：${item.wikiTags.join('、')}` : '';
+            const points = item.wikiCorePoints?.length ? `\n知识点：${item.wikiCorePoints.join('；')}` : '';
+            return `${index + 1}. ${item.title}\n类型：${item.wikiContentType || item.type || '知乎内容'}\n一句话：${item.wikiOneSentence || item.wikiSummary}\n入库：${item.wikiJudgment}\n可信度：${item.wikiCredibility}${tags}${points}`;
+        }).join('\n\n').slice(0, 12000);
+
+        const sys = getWikiSynthesisSystemPrompt();
+        const prompt = [
+            `本次运行日期：${formatWikiDate(wikiState.startedAt || new Date())}`,
+            '下面是已经结构化后的学习卡片，请据此生成总览：',
+            digest
+        ].join('\n\n');
+        const raw = await callLLMWithRetry(sys, prompt, { retries: 2, ...runConfig });
+        return cleanWikiSynthesisMarkdown(raw);
+    }
+
+    function formatWikiDate(date = new Date()) {
+        date = date instanceof Date ? date : new Date(date);
+        if (Number.isNaN(date.getTime())) date = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function buildWikiMarkdown(items, synthesis) {
+        const date = formatWikiDate(wikiState.startedAt || new Date());
+        const formalCount = items.filter(item => item.wikiJudgment === '正式入库').length;
+        const materialCount = items.filter(item => item.wikiJudgment === '只作素材').length;
+        const pendingCount = items.filter(item => item.wikiContentType === '采集异常' || item.wikiJudgment === '待补全文').length;
+        const cleanSynthesis = cleanWikiSynthesisMarkdown(synthesis);
+        const lines = [
+            `# 知乎首页学习卡片库 - ${date}`,
+            '',
+            `生成时间：${new Date().toLocaleString()}`,
+            `条目数量：${items.length}`,
+            `入库概览：正式 ${formalCount} · 素材 ${materialCount} · 待补全文 ${pendingCount}`,
+            ''
+        ];
+
+        if (cleanSynthesis) {
+            lines.push('## 总览：趋势雷达 + 学习萃取', '', cleanSynthesis, '');
+        }
+
+        const learningItems = items.filter(item => item.wikiContentType !== '采集异常' && !['待补全文', '丢弃'].includes(item.wikiJudgment));
+        const anomalyItems = items.filter(item => item.wikiContentType === '采集异常' || ['待补全文', '丢弃'].includes(item.wikiJudgment));
+
+        lines.push('## 知识卡片库', '');
+        learningItems.forEach((item, index) => {
+            const tags = (item.wikiTags || []).map(tag => `#${String(tag).replace(/^#/, '').replace(/\s+/g, '_')}`).join(' ');
+            lines.push(`### ${index + 1}. ${item.title || '未命名内容'}`);
+            lines.push(`- 作者：${getWikiDisplayAuthor(item)}`);
+            lines.push(`- 内容类型：${item.wikiContentType || item.type || '观点'}`);
+            if (item.contentKind === 'answer' && item.questionTitle && !sameWikiMetaText(item.questionTitle, item.title)) lines.push(`- 原问题：${item.questionTitle}`);
+            if (item.contentKind === 'question' && item.questionTitle && !sameWikiMetaText(item.questionTitle, item.title)) lines.push(`- 问题：${item.questionTitle}`);
+            lines.push(`- 链接：${formatWikiSourceLink(item)}`);
+            if (item.fullTextSource || item.source) lines.push(`- 正文来源：${item.fullTextSource || item.source}`);
+            if (item.fetchWarning) lines.push(`- 抓取备注：${item.fetchWarning}`);
+            lines.push(`- 一句话结论：${item.wikiOneSentence || item.wikiSummary || '暂无结论。'}`);
+            if (item.wikiCorePoints?.length) {
+                lines.push(`- 核心知识点：`);
+                item.wikiCorePoints.forEach(point => lines.push(`  - ${point}`));
+            }
+            if (item.wikiTransferScenarios?.length) {
+                lines.push(`- 可迁移场景：`);
+                item.wikiTransferScenarios.forEach(scene => lines.push(`  - ${scene}`));
+            }
+            if (item.wikiEvidenceExamples?.length) {
+                lines.push(`- 证据与例子：`);
+                item.wikiEvidenceExamples.forEach(example => lines.push(`  - ${example}`));
+            }
+            lines.push(`- 入库判断：${item.wikiJudgment || '只作素材'}`);
+            lines.push(`- 检索标签：${tags || '无'}`);
+            lines.push(`- 可信度：${item.wikiCredibility || '中'}${item.wikiCredibilityReason ? `，${item.wikiCredibilityReason}` : ''}`);
+            lines.push('');
+        });
+
+        if (anomalyItems.length) {
+            lines.push('## 采集异常 / 待补全文', '');
+            anomalyItems.forEach((item, index) => {
+                const tags = (item.wikiTags || []).map(tag => `#${String(tag).replace(/^#/, '').replace(/\s+/g, '_')}`).join(' ');
+                lines.push(`### ${index + 1}. ${item.title || '未命名内容'}`);
+                lines.push(`- 链接：${formatWikiSourceLink(item)}`);
+                if (item.fullTextSource || item.source) lines.push(`- 正文来源：${item.fullTextSource || item.source}`);
+                lines.push(`- 判断：${item.wikiJudgment || '待补全文'}`);
+                lines.push(`- 原因：${item.wikiCredibilityReason || item.anomalyReason || item.fetchError || '正文缺失或来源异常。'}`);
+                if (item.fetchWarning) lines.push(`- 抓取备注：${item.fetchWarning}`);
+                lines.push(`- 首页摘录：${clipWikiText(item.snippet || item.text?.slice(0, 180) || '无', 180)}`);
+                lines.push(`- 标签：${tags || '#采集异常 #待补全文'}`);
+                lines.push('');
+            });
+        }
+
+        return lines.join('\n');
+    }
+
+    async function collectWikiHomeItems(statusEl, runConfig = getWikiRunConfig()) {
+        const maxItems = Math.max(1, getWikiLimit('wikiMaxItems', 100, runConfig));
+        syncHomeItemsFromGroups();
+
+        while (_homeState.items.length < maxItems && !_homeState.exhausted) {
+            const batch = await loadNextHomeGroup(statusEl, {
+                switchToNewGroup: false,
+                label: 'Wiki API 补充首页推荐',
+                maxPages: Math.max(4, Math.ceil((maxItems - _homeState.items.length) / HOME_BATCH_SIZE) + 3)
+            });
+            if (!batch.length) break;
+        }
+
+        return _homeState.items.slice(0, maxItems);
+    }
+
+    function createWikiActionButton(text, handler) {
+        const btn = document.createElement('button');
+        btn.className = 'zh-inline-btn';
+        btn.textContent = text;
+        btn.addEventListener('click', handler);
+        return btn;
+    }
+
+    function downloadWikiMarkdown(markdown, record = null) {
+        const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const started = record?.startedAt || wikiState.startedAt || new Date();
+        a.download = `zhihu-wiki-${formatWikiDate(new Date(started))}.md`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function copyWikiMarkdown(markdown, btn = null) {
+        try {
+            await navigator.clipboard.writeText(markdown);
+            if (btn) btn.textContent = '已复制';
+        } catch (err) {
+            alert('复制失败，请在预览区手动复制。');
+        }
+    }
+
+    function renderWikiLog(record = null) {
+        const logs = record?.log || wikiState.log || [];
+        const errors = record?.errors || wikiState.errors || [];
+        const lines = logs.length
+            ? logs.map(log => `[${formatWikiTime(log.time)}] ${log.message}`)
+            : ['暂无日志。'];
+        if (errors.length) {
+            lines.push('', '抓取/生成异常：');
+            errors.slice(-40).forEach((entry, index) => {
+                const item = entry?.item || {};
+                const title = item.title ? `《${clipWikiText(item.title, 48)}》` : '未知条目';
+                const url = item.url || item.key || '无URL';
+                lines.push(`${index + 1}. ${title}｜${entry?.error || '未知错误'}｜${url}`);
+            });
+        }
+        const pre = document.createElement('pre');
+        pre.id = record ? '' : 'zh-wiki-live-log';
+        pre.className = 'zh-wiki-log';
+        pre.textContent = lines.join('\n');
+        return pre;
+    }
+
+    function renderWikiHistory(wrapper) {
+        ensureWikiHistory();
+        const section = document.createElement('section');
+        section.className = 'zh-wiki-history';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Wiki 运行历史';
+        section.appendChild(title);
+
+        if (!wikiState.history.length) {
+            const empty = document.createElement('div');
+            empty.className = 'zh-wiki-history-meta';
+            empty.textContent = '还没有历史记录。开始一次采集后，这里会保留时间戳、阶段日志和结果。';
+            section.appendChild(empty);
+            wrapper.appendChild(section);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'zh-wiki-history-list';
+        wikiState.history.forEach(record => {
+            const item = document.createElement('div');
+            item.className = 'zh-wiki-history-item';
+
+            const main = document.createElement('div');
+            main.className = 'zh-wiki-history-main';
+
+            const left = document.createElement('div');
+            const statusMap = { running: '运行中', paused: '已暂停', finished: '已完成', failed: '失败', interrupted: '已中断', pending: '准备中' };
+            const recordTitle = document.createElement('div');
+            recordTitle.className = 'zh-wiki-history-title';
+            recordTitle.textContent = `${statusMap[record.status] || record.status || '未知状态'} · ${record.progressMessage || record.phase || '无阶段信息'}`;
+            const recordMeta = document.createElement('div');
+            recordMeta.className = 'zh-wiki-history-meta';
+            recordMeta.textContent = `开始：${formatWikiTime(record.startedAt)}${record.finishedAt ? ` ｜ 结束：${formatWikiTime(record.finishedAt)}` : ''} ｜ 条目：${record.itemCount || 0} ｜ 错误：${record.errorCount || 0}`;
+            left.appendChild(recordTitle);
+            left.appendChild(recordMeta);
+            main.appendChild(left);
+
+            const actions = document.createElement('div');
+            actions.className = 'zh-wiki-history-actions';
+            if (record.markdown) {
+                actions.appendChild(createWikiActionButton('查看结果', () => renderWikiResult(record.markdown, record)));
+                actions.appendChild(createWikiActionButton('复制', e => copyWikiMarkdown(record.markdown, e.currentTarget)));
+                actions.appendChild(createWikiActionButton('下载', () => downloadWikiMarkdown(record.markdown, record)));
+            }
+            actions.appendChild(createWikiActionButton('日志', () => {
+                const existing = item.querySelector('.zh-wiki-log');
+                if (existing) {
+                    existing.remove();
+                    return;
+                }
+                item.appendChild(renderWikiLog(record));
+            }));
+            main.appendChild(actions);
+            item.appendChild(main);
+            list.appendChild(item);
+        });
+        section.appendChild(list);
+        wrapper.appendChild(section);
+    }
+
+    function renderWikiDashboard() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) return;
+        _homeState.view = 'wiki';
+        restoreLiveMount();
+        clearHomeTranslations();
+        wrapper.classList.remove('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendHomeHeader(wrapper);
+
+        const status = document.createElement('div');
+        status.id = 'zh-wiki-progress';
+        status.className = 'zh-wiki-progress';
+        if (wikiState.running) {
+            status.textContent = `信息流 Wiki：${wikiState.progressMessage || '正在运行...'}`;
+        } else if (wikiState.finished && wikiState.markdown) {
+            status.textContent = `信息流 Wiki：上一次运行已完成，共 ${wikiState.items.length || 0} 条。`;
+        } else {
+            status.textContent = '信息流 Wiki：未运行。打开历史可追溯之前的任务，开始新采集会生成一条新的历史记录。';
+        }
+        wrapper.appendChild(status);
+
+        const actions = document.createElement('div');
+        actions.className = 'zh-wiki-actions';
+        if (!wikiState.running) {
+            actions.appendChild(createWikiActionButton('开始新采集', startWikiRun));
+        } else {
+            actions.appendChild(createWikiActionButton(wikiState.paused ? '恢复任务' : '暂停任务', () => setWikiPaused(!wikiState.paused)));
+            actions.appendChild(createWikiActionButton('刷新进度', renderWikiDashboard));
+        }
+        if (_homeState.items.length) actions.appendChild(createWikiActionButton('返回推荐列表', renderHomeList));
+        wrapper.appendChild(actions);
+
+        if (wikiState.running || wikiState.log?.length) wrapper.appendChild(renderWikiLog());
+        renderWikiHistory(wrapper);
+        window.scrollTo(0, 0);
+    }
+
+    function renderWikiShell(message = '准备运行信息流 Wiki...') {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) return null;
+        _homeState.view = 'wiki';
+        restoreLiveMount();
+        clearHomeTranslations();
+        wrapper.classList.remove('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendHomeHeader(wrapper);
+        const progress = document.createElement('div');
+        progress.id = 'zh-wiki-progress';
+        progress.className = 'zh-wiki-progress';
+        progress.textContent = `信息流 Wiki：${message}`;
+        wrapper.appendChild(progress);
+        const actions = document.createElement('div');
+        actions.className = 'zh-wiki-actions';
+        actions.appendChild(createWikiActionButton('暂停任务', () => setWikiPaused(true)));
+        actions.appendChild(createWikiActionButton('刷新进度', renderWikiDashboard));
+        wrapper.appendChild(actions);
+        wrapper.appendChild(renderWikiLog());
+        renderWikiHistory(wrapper);
+        window.scrollTo(0, 0);
+        return progress;
+    }
+
+    function renderWikiResult(markdown, record = null) {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper) return;
+        wrapper.classList.remove('zh-has-top-nav');
+        wrapper.innerHTML = '';
+        appendHomeHeader(wrapper);
+
+        const actions = document.createElement('div');
+        actions.className = 'zh-wiki-actions';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'zh-inline-btn';
+        copyBtn.textContent = '复制 Markdown';
+        copyBtn.addEventListener('click', () => copyWikiMarkdown(markdown, copyBtn));
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'zh-inline-btn';
+        downloadBtn.textContent = '下载 .md';
+        downloadBtn.addEventListener('click', () => downloadWikiMarkdown(markdown, record));
+
+        const backBtn = document.createElement('button');
+        backBtn.className = 'zh-inline-btn';
+        backBtn.textContent = '返回 Wiki 面板';
+        backBtn.addEventListener('click', renderWikiDashboard);
+
+        actions.appendChild(copyBtn);
+        actions.appendChild(downloadBtn);
+        actions.appendChild(backBtn);
+        wrapper.appendChild(actions);
+
+        const pre = document.createElement('pre');
+        pre.className = 'zh-wiki-output';
+        pre.textContent = markdown;
+        wrapper.appendChild(pre);
+        renderWikiHistory(wrapper);
+        window.scrollTo(0, 0);
+    }
+
+    async function startWikiRun() {
+        if (!isHomePage()) return alert('信息流 Wiki 目前只在知乎首页运行。');
+        if (wikiState.running) {
+            renderWikiDashboard();
+            return;
+        }
+        const runConfig = createWikiRunConfig();
+        if (!runConfig.apiKey) return alert('请先在设置里配置 API Key。');
+
+        const startedAt = new Date();
+        wikiState = {
+            runId: createWikiRunId(startedAt),
+            items: [],
+            running: true,
+            finished: false,
+            errors: [],
+            markdown: '',
+            startedAt,
+            finishedAt: null,
+            phase: 'collect',
+            progressMessage: '准备采集首页推荐...',
+            paused: false,
+            log: [],
+            history: loadWikiHistory(),
+            runConfig
+        };
+        recordWikiProgress('准备采集首页推荐...', 'collect');
+
+        const progressEl = renderWikiShell('准备采集首页推荐...');
+        try {
+            const items = await collectWikiHomeItems(progressEl, runConfig);
+            wikiState.items = items;
+            updateWikiProgress(`采集完成，共 ${items.length} 条，开始抓取全文...`, 'fetch');
+
+            const fetchTasks = items.map(item => async () => {
+                const result = await fetchFullTextForItem(item);
+                return {
+                    ...item,
+                    ...result,
+                    title: result.title || item.title,
+                    fullText: result.text,
+                    fullTextSource: result.source,
+                    fetchError: result.error || '',
+                    fetchWarning: result.warning || ''
+                };
+            });
+            const fetchConcurrency = getWikiLimit('wikiConcurrency', 20, runConfig);
+            const fetched = await runLimited(fetchTasks, {
+                concurrency: fetchConcurrency,
+                rpm: 0,
+                onStart: (started, total) => updateWikiProgress(`抓取全文请求已发起 ${started}/${total}`, 'fetch'),
+                onProgress: (done, total) => updateWikiProgress(`抓取全文已完成 ${done}/${total}`, 'fetch')
+            });
+
+            const normalized = fetched.map((item, index) => item?.error ? { ...items[index], fullText: items[index].text, fullTextSource: '卡片回退', fetchError: item.error.message } : item);
+            const fetchStats = normalized.reduce((stats, item) => {
+                const source = item.fullTextSource || item.source || '未知';
+                if (source === '全文抓取') stats.full++;
+                else if (source === '推荐 API 正文') stats.api++;
+                else if (source === '卡片回退') stats.fallback++;
+                else stats.other++;
+                if (!isUsableWikiUrl(item.url || item.key || '')) stats.noUrl++;
+                if (item.fetchError || item.fetchWarning) stats.warn++;
+                return stats;
+            }, { full: 0, api: 0, fallback: 0, other: 0, noUrl: 0, warn: 0 });
+            normalized
+                .filter(item => item.fullTextSource === '卡片回退' || !isUsableWikiUrl(item.url || item.key || '') || item.fetchError)
+                .slice(0, 30)
+                .forEach(item => {
+                    wikiState.errors.push({
+                        item: {
+                            title: item.title,
+                            url: item.url || '',
+                            key: item.key || '',
+                            type: item.type || '',
+                            contentKind: item.contentKind || ''
+                        },
+                        error: `${item.fullTextSource || '未知来源'}：${item.fetchError || item.anomalyReason || '未取得可靠正文'}`
+                    });
+                });
+            recordWikiProgress(`全文抓取诊断：页面全文 ${fetchStats.full} · 推荐API正文兜底 ${fetchStats.api} · 卡片回退 ${fetchStats.fallback} · 无有效URL ${fetchStats.noUrl} · 抓取备注 ${fetchStats.warn}`, 'fetch');
+            updateWikiProgress(`全文抓取完成，开始 AI 摘要 ${normalized.length} 条...`, 'summarize');
+            const summaryTasks = normalized.map(item => () => summarizeWikiItem(item, runConfig));
+            const summarized = await runLimited(summaryTasks, {
+                concurrency: getWikiLimit('wikiConcurrency', 20, runConfig),
+                rpm: getWikiLimit('wikiRpm', 300, runConfig),
+                onStart: (started, total) => updateWikiProgress(`AI 摘要请求已发起 ${started}/${total}`, 'summarize'),
+                onProgress: (done, total) => updateWikiProgress(`AI 摘要已完成 ${done}/${total}`, 'summarize')
+            });
+
+            const finalItems = summarized.map((item, index) => {
+                if (!item?.error) return item;
+                wikiState.errors.push({ item: normalized[index], error: item.error.message });
+                return makeAnomalyLearningCard(normalized[index], `AI 学习卡片生成失败：${item.error.message}`);
+            });
+
+            updateWikiProgress('生成今日总览...', 'synthesis');
+            let synthesis = '';
+            try {
+                synthesis = await buildWikiSynthesis(finalItems, runConfig);
+            } catch (err) {
+                wikiState.errors.push({ error: `今日总览失败：${err.message}` });
+                synthesis = `> 今日总览生成失败：${err.message}`;
+            }
+            const markdown = buildWikiMarkdown(finalItems, synthesis);
+            wikiState.items = finalItems;
+            wikiState.markdown = markdown;
+            wikiState.finished = true;
+            const learningCount = finalItems.filter(item => item.wikiContentType !== '采集异常' && item.wikiJudgment !== '待补全文').length;
+            const anomalyCount = finalItems.length - learningCount;
+            updateWikiProgress(`已完成，生成 ${learningCount} 张学习卡片，${anomalyCount} 条待补全文。`, 'finished');
+            finishWikiHistoryRecord('finished', {
+                phase: 'finished',
+                progressMessage: `已完成，生成 ${learningCount} 张学习卡片，${anomalyCount} 条待补全文。`,
+                markdown
+            });
+            renderWikiResult(markdown);
+        } catch (err) {
+            wikiState.errors.push({ error: err.message });
+            updateWikiProgress(`运行失败：${err.message}`, 'failed');
+            finishWikiHistoryRecord('failed', {
+                phase: 'failed',
+                progressMessage: `运行失败：${err.message}`
+            });
+            renderWikiShell(`运行失败：${err.message}`);
+        } finally {
+            wikiState.running = false;
+            wikiState.paused = false;
+            removeCollectOverlay();
+            upsertWikiHistoryRecord({
+                status: wikiState.finished ? 'finished' : 'failed',
+                errorCount: wikiState.errors.length || 0,
+                itemCount: wikiState.items.length || 0,
+                log: wikiState.log,
+                markdown: wikiState.markdown,
+                runConfigSnapshot: wikiState.runConfig || null
+            });
+        }
+    }
+
+    function findOriginalHomeElement(itemRecord) {
+        if (!itemRecord?.key) return null;
+        return getHomeFeedItems().find((item, index) => getHomeItemKey(item, index) === itemRecord.key) || null;
+    }
+
+    function restoreHomeItemPosition() {
+        if (!isHomePage() || _homeState.view !== 'item') return;
+        const itemRecord = _homeState.items[_homeState.currentIndex];
+        const original = findOriginalHomeElement(itemRecord);
+        if (original) {
+            original.scrollIntoView({ block: 'start' });
+            return;
+        }
+
+        const targetTop = Number.isFinite(_homeState.exitScrollY)
+            ? _homeState.exitScrollY
+            : itemRecord?.sourceTop;
+        if (Number.isFinite(targetTop)) {
+            const maxSafeTop = Math.max(0, getDocumentHeight() - window.innerHeight - 80);
+            const safeTop = Math.max(0, Math.min(targetTop, maxSafeTop));
+            window.scrollTo(0, safeTop);
+            setTimeout(() => window.scrollTo(0, safeTop), 120);
+        }
+    }
+
+    function findPostCommentsNode() {
+        const comments = document.querySelector('.Comments-container');
+        if (!comments || comments.closest('#immersive-wrapper')) return null;
+        return comments;
+    }
+
+    function findPostCommentInputNode() {
+        const inputs = Array.from(document.querySelectorAll('.InputLike, [contenteditable="true"]'))
+            .filter(el => !el.closest('#immersive-wrapper') && !el.closest('.Comments-container') && !el.closest('.AppHeader') && !el.closest('[role="dialog"]'));
+
+        for (const input of inputs) {
+            let node = input;
+            while (node && node.parentElement && node.parentElement !== document.body) {
+                const style = window.getComputedStyle(node);
+                if (style.position === 'fixed') return node;
+                node = node.parentElement;
+            }
+        }
+        return null;
+    }
+
+    function createQuestionToolsPanel() {
+        if (document.getElementById('zh-tools-panel')) return;
+        const toolsPanel = document.createElement('div');
+        toolsPanel.id = 'zh-tools-panel';
+
+        const translateBtn = document.createElement('button');
+        translateBtn.id = 'zh-translate-btn';
+        translateBtn.className = 'zh-square-btn';
+        translateBtn.title = '展开/隐藏 翻译卡片 (T)';
+        translateBtn.innerHTML = ICONS.translate;
+        translateBtn.addEventListener('click', () => {
+            window._trVisible = !window._trVisible;
+            document.body.classList.toggle('zh-show-tr', window._trVisible);
+            if (window._trVisible) {
+                translateBtn.classList.add('zh-btn-active');
+                processTranslation();
+            } else {
+                translateBtn.classList.remove('zh-btn-active');
+            }
+        });
+
+        const settingsBtn = document.createElement('button');
+        settingsBtn.className = 'zh-square-btn';
+        settingsBtn.title = '设置 (API及偏好)';
+        settingsBtn.innerHTML = ICONS.settings;
+        settingsBtn.addEventListener('click', showSettingsModal);
+
+        const expressionBtn = document.createElement('button');
+        expressionBtn.className = 'zh-square-btn';
+        expressionBtn.title = '表达收藏本';
+        expressionBtn.innerHTML = ICONS.expression;
+        expressionBtn.addEventListener('click', showExpressionBookModal);
+
+        const radarBtn = document.createElement('button');
+        radarBtn.className = 'zh-square-btn';
+        radarBtn.title = '信息雷达报告';
+        radarBtn.innerHTML = ICONS.radar;
+        radarBtn.addEventListener('click', showRadarReportModal);
+
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'zh-square-btn';
+        shareBtn.title = '零损分享';
+        shareBtn.innerHTML = ICONS.share;
+        shareBtn.addEventListener('click', runZeroLossShare);
+
+        if (isHomePage()) {
+            const wikiBtn = document.createElement('button');
+            wikiBtn.id = 'zh-wiki-btn';
+            wikiBtn.className = 'zh-square-btn';
+            wikiBtn.title = '信息流 Wiki 面板';
+            wikiBtn.innerHTML = ICONS.wiki;
+            wikiBtn.addEventListener('click', renderWikiDashboard);
+            toolsPanel.appendChild(wikiBtn);
+        }
+
+        const helpBtn = document.createElement('button');
+        helpBtn.className = 'zh-square-btn';
+        helpBtn.title = '帮助 (快捷键说明)';
+        helpBtn.innerHTML = ICONS.help;
+        helpBtn.addEventListener('click', showHelpModal);
+
+        const githubBtn = document.createElement('button');
+        githubBtn.className = 'zh-square-btn';
+        githubBtn.title = '打开 GitHub 仓库';
+        githubBtn.innerHTML = ICONS.github;
+        githubBtn.addEventListener('click', () => window.open('https://github.com/connectedGraph/zhihu-immersive-reader', '_blank', 'noopener,noreferrer'));
+
+        const themeBtn = document.createElement('button');
+        themeBtn.id = 'zh-theme-btn';
+        themeBtn.className = 'zh-square-btn';
+        themeBtn.innerHTML = ICONS.theme;
+        themeBtn.addEventListener('click', () => { currentThemeIndex = (currentThemeIndex + 1) % THEMES.length; applyTheme(currentThemeIndex); });
+
+        toolsPanel.appendChild(translateBtn);
+        toolsPanel.appendChild(expressionBtn);
+        if (!isHomePage()) {
+            toolsPanel.appendChild(radarBtn);
+            toolsPanel.appendChild(shareBtn);
+        }
+        toolsPanel.appendChild(settingsBtn);
+        toolsPanel.appendChild(helpBtn);
+        toolsPanel.appendChild(githubBtn);
+        toolsPanel.appendChild(themeBtn);
+        document.body.appendChild(toolsPanel);
+
+        const exitBtn = document.createElement('button');
+        exitBtn.id = 'immersive-exit-btn';
+        exitBtn.innerText = '退出沉浸';
+        exitBtn.addEventListener('click', toggleImmersiveMode);
+        document.body.appendChild(exitBtn);
+    }
+
+    async function enterQuestionImmersive() {
+        if (!isQuestionPage()) return alert('阁下，此版本只适配知乎 question 页面。');
+        _questionState.originalScrollY = window.scrollY;
+        _questionState.collecting = true;
+        applyTheme(currentThemeIndex);
+
+        try {
+            await captureQuestionContext();
+            const wrapper = buildQuestionWrapper();
+
+            if (isAnswerUrl()) {
+                const content = await waitForElement('.QuestionAnswer-content, .AnswerItem');
+                if (!content) throw new Error('未找到当前回答正文');
+                const answerItem = content.closest?.('.AnswerItem') || content;
+                expandAnswerItem(answerItem);
+                await sleep(400);
+                _questionState.answers = [buildAnswerRecord(answerItem, 0)];
+                _questionState.exhausted = true;
+                ensureImmersiveStyle();
+                hideOriginalPage(wrapper);
+                _articleNode = wrapper;
+                createQuestionToolsPanel();
+                window._isImmersive = true;
+                renderQuestionAnswer(0, true);
+                if (config.autoSum || config.autoTr) document.getElementById('zh-translate-btn')?.click();
+                return;
+            }
+
+            const status = showCollectOverlay('正在等待回答列表...');
+            await waitForElement('.Card.AnswersNavWrapper, .QuestionAnswers-answers, .ContentItem.AnswerItem');
+            const cacheKey = getQuestionCacheKey();
+            let forceMainCollect = false;
+            try {
+                forceMainCollect = sessionStorage.getItem('zh-force-main-question-collect') === getMainQuestionUrl();
+                if (forceMainCollect) sessionStorage.removeItem('zh-force-main-question-collect');
+            } catch (err) {}
+            const cached = forceMainCollect ? null : (_questionAnswerCache.get(cacheKey) || await loadPersistentQuestionCache(cacheKey));
+            if (cached?.answers?.length) {
+                _questionState.answers = cached.answers;
+                attachLiveNodesToAnswers(_questionState.answers);
+                if (cached.questionTitle) _questionState.questionTitle = cached.questionTitle;
+                if (cached.questionDetailHTML) _questionState.questionDetailHTML = cached.questionDetailHTML;
+                _questionState.currentIndex = cached.currentIndex || 0;
+                _questionState.exitScrollY = cached.exitScrollY || _questionState.answers[_questionState.currentIndex]?.sourceTop || _questionState.originalScrollY;
+                _questionState.exhausted = cached.exhausted === true;
+                status.textContent = `已使用缓存的 ${_questionState.answers.length} 个回答`;
+                await sleep(200);
+            } else {
+                _questionState.answers = await collectQuestionAnswers(status, HOME_BATCH_SIZE, {
+                    label: '快速采集首批问题回答',
+                    maxRounds: Math.max(8, HOME_BATCH_SIZE * 3)
+                });
+                _questionState.exhausted = _questionState.answers.length < HOME_BATCH_SIZE;
+                _questionState.answers = await enrichAnswersForList(_questionState.answers, status);
+                _questionState.currentIndex = 0;
+                _questionState.exitScrollY = _questionState.answers[0]?.sourceTop || _questionState.originalScrollY;
+                await persistCurrentQuestionCache();
+            }
+            removeCollectOverlay();
+            ensureImmersiveStyle();
+            hideOriginalPage(wrapper);
+            _articleNode = wrapper;
+            createQuestionToolsPanel();
+            window._isImmersive = true;
+            renderQuestionList();
+        } catch (err) {
+            removeCollectOverlay();
+            window._isImmersive = false;
+            alert(`进入问题沉浸模式失败：${err.message}`);
+        } finally {
+            _questionState.collecting = false;
+        }
+    }
+
+    async function enterHomeImmersive() {
+        if (!isHomePage()) return alert('阁下，此版本只适配知乎首页。');
+        _homeState.originalScrollY = window.scrollY;
+        _homeState.collecting = true;
+        applyTheme(currentThemeIndex);
+
+        try {
+            const wrapper = buildHomeWrapper();
+            const status = showCollectOverlay('正在等待首页推荐流...');
+            await waitForElement('#TopstoryContent');
+
+            const cacheKey = getHomeCacheKey();
+            const cached = _homeFeedCache.get(cacheKey);
+            if (cached?.schemaVersion === 2 && Array.isArray(cached.groups) && cached.groups.length) {
+                _homeState.groups = normalizeHomeGroups(cached.groups);
+                syncHomeItemsFromGroups();
+                _homeState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _homeState.groups.length - 1));
+                _homeState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_homeState.groups[_homeState.currentGroupIndex]?.length || 1) - 1));
+                _homeState.currentIndex = getHomeGroupStartIndex(_homeState.currentGroupIndex) + _homeState.currentIndexInGroup;
+                _homeState.exitScrollY = cached.exitScrollY || _homeState.items[_homeState.currentIndex]?.sourceTop || _homeState.originalScrollY;
+                _homeState.exhausted = !!cached.exhausted;
+                _homeState.apiNextUrl = cached.apiNextUrl || '';
+                _homeState.apiStarted = !!cached.apiStarted;
+                status.textContent = `已使用缓存的 ${_homeState.groups.length} 组首页推荐`;
+                await sleep(200);
+            } else {
+                await waitForHomeFeedItems(HOME_BATCH_SIZE, 25000, status);
+                const firstGroup = collectHomeFeedItemsFromDOM(status, HOME_BATCH_SIZE, {
+                    label: '读取首页预加载推荐'
+                });
+                if (!firstGroup.length) {
+                    status.textContent = '首页推荐卡片暂未加载出来，已保留原页面；稍后可按 Ctrl+E 重新进入沉浸模式。';
+                    await sleep(2200);
+                    removeCollectOverlay();
+                    window._isImmersive = false;
+                    return;
+                }
+                _homeState.groups = firstGroup.length ? [firstGroup] : [];
+                syncHomeItemsFromGroups();
+                _homeState.currentGroupIndex = 0;
+                _homeState.currentIndexInGroup = 0;
+                _homeState.currentIndex = 0;
+                _homeState.exitScrollY = _homeState.items[0]?.sourceTop || _homeState.originalScrollY;
+                persistHomeFeedCache();
+            }
+
+            removeCollectOverlay();
+            ensureImmersiveStyle();
+            hideOriginalPage(wrapper);
+            _articleNode = wrapper;
+            createQuestionToolsPanel();
+            window._isImmersive = true;
+            renderHomeList();
+        } catch (err) {
+            removeCollectOverlay();
+            window._isImmersive = false;
+            alert(`进入首页沉浸模式失败：${err.message}`);
+        } finally {
+            _homeState.collecting = false;
+        }
+    }
+
+    function enterPostImmersive() {
+        _articleNode = document.querySelector('.Post-Main.Post-NormalMain') || document.querySelector('.Post-Main') || document.querySelector('.AnswerItem');
+        if (!_articleNode) return alert('阁下，未寻得文章主体！');
+
+        _actionBarNode = _articleNode.querySelector('.ContentItem-actions') || document.querySelector('.ContentItem-actions');
+
+        const articlePlaceholder = document.createElement('span');
+        articlePlaceholder.id = 'zh-article-placeholder';
+        articlePlaceholder.style.display = 'none';
+        _articleNode.parentNode.insertBefore(articlePlaceholder, _articleNode);
+
+        if (_actionBarNode) {
+            const actionPlaceholder = document.createElement('span');
+            actionPlaceholder.id = 'zh-action-placeholder';
+            actionPlaceholder.style.display = 'none';
+            _actionBarNode.parentNode.insertBefore(actionPlaceholder, _actionBarNode);
+
+            _actionBarNode.dataset.origCssText = _actionBarNode.style.cssText;
+            _actionBarNode.style.cssText = 'position: static !important; box-shadow: none !important; background: transparent !important; margin-top: 40px !important;';
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.id = 'immersive-wrapper';
+        wrapper.appendChild(_articleNode);
+        if (_actionBarNode) wrapper.appendChild(_actionBarNode);
+
+        _postCommentsNode = findPostCommentsNode();
+        if (_postCommentsNode) {
+            const commentsPlaceholder = document.createElement('span');
+            commentsPlaceholder.id = 'zh-comments-placeholder';
+            commentsPlaceholder.style.display = 'none';
+            _postCommentsNode.parentNode.insertBefore(commentsPlaceholder, _postCommentsNode);
+            wrapper.appendChild(_postCommentsNode);
+        }
+
+        _postCommentInputNode = findPostCommentInputNode();
+        if (_postCommentInputNode) {
+            const inputPlaceholder = document.createElement('span');
+            inputPlaceholder.id = 'zh-comment-input-placeholder';
+            inputPlaceholder.style.display = 'none';
+            _postCommentInputNode.parentNode.insertBefore(inputPlaceholder, _postCommentInputNode);
+            wrapper.appendChild(_postCommentInputNode);
+        }
+
+        const reactRoot = document.getElementById('root') || document.body;
+        Array.from(reactRoot.children).forEach(child => {
+            if (child.id !== 'immersive-wrapper' && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE' && child.tagName !== 'LINK') {
+                child.dataset.origDisplay = child.style.display || '';
+                child.style.display = 'none';
+                child.classList.add('zh-hidden-by-immersive');
+            }
+        });
+
+        reactRoot.appendChild(wrapper);
+
+        const tocNode = _articleNode.querySelector('.css-u56wtg') || document.querySelector('.CatalogBtn') || document.querySelector('[aria-label="目录"]');
+        if (tocNode) tocNode.classList.add('zh-toc-fixed-style');
+
+        const timeNode = _articleNode.querySelector('.ContentItem-time') || _articleNode.querySelector('.Post-Sub');
+        if (timeNode) {
+            let currentNode = timeNode.nextElementSibling;
+            while (currentNode) {
+                if (currentNode.id !== 'zh-action-placeholder' && !currentNode.classList.contains('ContentItem-actions')) {
+                    currentNode.dataset.origDisplay = currentNode.style.display || '';
+                    currentNode.style.display = 'none';
+                    currentNode.classList.add('zh-hidden-by-immersive-inner');
+                }
+                currentNode = currentNode.nextElementSibling;
+            }
+        }
+
+        _articleNode.querySelectorAll('.FollowButton').forEach(btn => {
+            btn.dataset.origDisplay = btn.style.display || '';
+            btn.style.display = 'none';
+            btn.classList.add('zh-hidden-by-immersive-inner');
+        });
+
+        ['.pc-article-answer-text-chain', '.pc-article-answer-big-img', '.RichText-MCNLinkCardContainer', '.ecommerce-ad-box', '.MCNLinkCard'].forEach(s => {
+            _articleNode.querySelectorAll(s).forEach(ad => {
+                ad.dataset.origDisplay = ad.style.display || '';
+                ad.style.display = 'none';
+                ad.classList.add('zh-hidden-by-immersive-inner');
+            });
+        });
+        startArticleAdCleanup();
+
+        ensureImmersiveStyle();
+
+        const toolsPanel = document.createElement('div');
+        toolsPanel.id = 'zh-tools-panel';
+
+        const translateBtn = document.createElement('button');
+        translateBtn.id = 'zh-translate-btn';
+        translateBtn.className = 'zh-square-btn';
+        translateBtn.title = '展开/隐藏 翻译卡片 (T)';
+        translateBtn.innerHTML = ICONS.translate;
+        translateBtn.addEventListener('click', () => {
+            window._trVisible = !window._trVisible;
+            document.body.classList.toggle('zh-show-tr', window._trVisible);
+            if (window._trVisible) {
+                translateBtn.classList.add('zh-btn-active');
+                processTranslation();
+            } else {
+                translateBtn.classList.remove('zh-btn-active');
+            }
+        });
+
+        const settingsBtn = document.createElement('button');
+        settingsBtn.className = 'zh-square-btn';
+        settingsBtn.title = '设置 (API及偏好)';
+        settingsBtn.innerHTML = ICONS.settings;
+        settingsBtn.addEventListener('click', showSettingsModal);
+
+        const expressionBtn = document.createElement('button');
+        expressionBtn.className = 'zh-square-btn';
+        expressionBtn.title = '表达收藏本';
+        expressionBtn.innerHTML = ICONS.expression;
+        expressionBtn.addEventListener('click', showExpressionBookModal);
+
+        const radarBtn = document.createElement('button');
+        radarBtn.className = 'zh-square-btn';
+        radarBtn.title = '信息雷达报告';
+        radarBtn.innerHTML = ICONS.radar;
+        radarBtn.addEventListener('click', showRadarReportModal);
+
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'zh-square-btn';
+        shareBtn.title = '零损分享';
+        shareBtn.innerHTML = ICONS.share;
+        shareBtn.addEventListener('click', runZeroLossShare);
+
+        const helpBtn = document.createElement('button');
+        helpBtn.className = 'zh-square-btn';
+        helpBtn.title = '帮助 (快捷键说明)';
+        helpBtn.innerHTML = ICONS.help;
+        helpBtn.addEventListener('click', showHelpModal);
+
+        const githubBtn = document.createElement('button');
+        githubBtn.className = 'zh-square-btn';
+        githubBtn.title = '打开 GitHub 仓库';
+        githubBtn.innerHTML = ICONS.github;
+        githubBtn.addEventListener('click', () => window.open('https://github.com/connectedGraph/zhihu-immersive-reader', '_blank', 'noopener,noreferrer'));
+
+        const themeBtn = document.createElement('button');
+        themeBtn.id = 'zh-theme-btn';
+        themeBtn.className = 'zh-square-btn';
+        themeBtn.innerHTML = ICONS.theme;
+        themeBtn.addEventListener('click', () => { currentThemeIndex = (currentThemeIndex + 1) % THEMES.length; applyTheme(currentThemeIndex); });
+
+        toolsPanel.appendChild(translateBtn);
+        toolsPanel.appendChild(expressionBtn);
+        toolsPanel.appendChild(radarBtn);
+        toolsPanel.appendChild(shareBtn);
+        toolsPanel.appendChild(settingsBtn);
+        toolsPanel.appendChild(helpBtn);
+        toolsPanel.appendChild(githubBtn);
+        toolsPanel.appendChild(themeBtn);
+        document.body.appendChild(toolsPanel);
+
+        const exitBtn = document.createElement('button');
+        exitBtn.id = 'immersive-exit-btn';
+        exitBtn.innerText = '退出沉浸';
+        exitBtn.addEventListener('click', toggleImmersiveMode);
+        document.body.appendChild(exitBtn);
+
+        setupImageToggles();
+        applyTheme(currentThemeIndex);
+        window._isImmersive = true;
+
+        if (config.autoSum || config.autoTr) {
+            translateBtn.click();
+        }
+    }
+
+    /**
+     * ============================================================================
+     * 沉浸模式：进入 / 退出
+     * ============================================================================
+     */
+    window.toggleImmersiveMode = function() {
+        if (_questionState.collecting || _homeState.collecting) return;
+        if (window._isImmersive) exitImmersive();
+        else enterImmersive();
+    };
+
+function enterImmersive() {
+        if (isHomePage()) {
+            enterHomeImmersive();
+            return;
+        }
+        if (isQuestionPage()) {
+            enterQuestionImmersive();
+            return;
+        }
+        if (isPostPage()) {
+            enterPostImmersive();
+            return;
+        }
+        alert('阁下，此通用版目前只适配知乎首页、question 页面和 zhuanlan /p/ 页面。');
+    }
+
+    function exitImmersive() {
+        stopArticleAdCleanup();
+        removeCollectOverlay();
+        restoreLiveMount();
+
+        // 1. 顺着咱们进来时打下的占位符，把文章主体和操作栏送回去
+        const articlePlaceholder = document.getElementById('zh-article-placeholder');
+        if (_articleNode && articlePlaceholder && articlePlaceholder.parentNode) {
+            articlePlaceholder.parentNode.insertBefore(_articleNode, articlePlaceholder);
+            articlePlaceholder.remove();
+        }
+
+        const actionPlaceholder = document.getElementById('zh-action-placeholder');
+        if (_actionBarNode && actionPlaceholder && actionPlaceholder.parentNode) {
+            _actionBarNode.style.cssText = _actionBarNode.dataset.origCssText || '';
+            actionPlaceholder.parentNode.insertBefore(_actionBarNode, actionPlaceholder);
+            actionPlaceholder.remove();
+        }
+
+        const commentsPlaceholder = document.getElementById('zh-comments-placeholder');
+        if (_postCommentsNode && commentsPlaceholder && commentsPlaceholder.parentNode) {
+            commentsPlaceholder.parentNode.insertBefore(_postCommentsNode, commentsPlaceholder);
+            commentsPlaceholder.remove();
+        }
+
+        const inputPlaceholder = document.getElementById('zh-comment-input-placeholder');
+        if (_postCommentInputNode && inputPlaceholder && inputPlaceholder.parentNode) {
+            inputPlaceholder.parentNode.insertBefore(_postCommentInputNode, inputPlaceholder);
+            inputPlaceholder.remove();
+        }
+
+        // 2. 清理沉浸模式自己生成的壳子
+        ['immersive-wrapper', 'zh-tools-panel', 'immersive-style', 'immersive-exit-btn', 'zh-settings-modal', 'zh-help-modal', 'zh-radar-report-modal', 'zh-radar-book-modal'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.remove();
+        });
+        document.querySelectorAll('[id^="zh-selection-modal-"]').forEach(modal => modal.remove());
+        removeSelectionContextMenu();
+        document.querySelectorAll('.zh-tr-card').forEach(card => card.remove());
+        resetImageToggles();
+        // （顺手防御性编程）重置一下之前存的全局变量，防止下次进入时状态错乱
+        _articleSummary = '';
+        window._articleSummary = '';
+        window._uiHidden = false;
+        window._trVisible = false;
+
+        // 3. 把之前强行隐藏的东西全部显示出来（包括刚刚隐藏的关注按钮）
+        const tocNode = document.querySelector('.zh-toc-fixed-style');
+        if (tocNode) tocNode.classList.remove('zh-toc-fixed-style');
+
+        document.querySelectorAll('.zh-hidden-by-immersive, .zh-hidden-by-immersive-inner').forEach(child => {
+            child.style.display = child.dataset.origDisplay || '';
+            child.classList.remove('zh-hidden-by-immersive');
+            child.classList.remove('zh-hidden-by-immersive-inner');
+        });
+
+        restoreQuestionAnswerPosition();
+        restoreHomeItemPosition();
+        window._isImmersive = false;
+        document.body.classList.remove('zh-ui-hidden', 'zh-show-tr');
+        _questionState = {
+            answers: [],
+            questionTitle: '',
+            questionDetailHTML: '',
+            originalScrollY: 0,
+            exitScrollY: 0,
+            currentIndex: 0,
+            reactRoot: null,
+            view: '',
+            collecting: false,
+            loadingMore: false,
+            exhausted: false
+        };
+        _homeState = {
+            items: [],
+            groups: [],
+            originalScrollY: 0,
+            exitScrollY: 0,
+            currentIndex: 0,
+            currentGroupIndex: 0,
+            currentIndexInGroup: 0,
+            view: '',
+            collecting: false,
+            loadingMore: false,
+            exhausted: false,
+            apiNextUrl: '',
+            apiStarted: false
+        };
+        _articleNode = null;
+        _actionBarNode = null;
+        _postCommentsNode = null;
+        _postCommentInputNode = null;
+    }
+    /**
+     * ============================================================================
+     * 事件监听：键盘快捷键 & 划词右键菜单
+     * ============================================================================
+     */
+    window.addEventListener('keydown', function(e) {
+        const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+        const typing = isTypingTarget(e.target);
+        if (key === 'escape') removeSelectionContextMenu();
+        if (!key) return;
+
+        if (window._isImmersive && _homeState.view === 'item' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (key === 'j') {
+                e.preventDefault();
+                navigateHomeItem(1);
+                return;
+            }
+            if (key === 'k') {
+                e.preventDefault();
+                navigateHomeItem(-1);
+                return;
+            }
+        }
+
+        if (window._isImmersive && _questionState.view === 'answer' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (key === 'j') {
+                e.preventDefault();
+                navigateQuestionAnswer(1);
+                return;
+            }
+            if (key === 'k') {
+                e.preventDefault();
+                navigateQuestionAnswer(-1);
+                return;
+            }
+        }
+
+        if (e.ctrlKey || e.metaKey) {
+            if (key === 'e') {
+                e.preventDefault();
+                window.toggleImmersiveMode();
+            } else if (key === 'h' && window._isImmersive) {
+                e.preventDefault();
+                window._uiHidden = !window._uiHidden;
+                document.body.classList.toggle('zh-ui-hidden', window._uiHidden);
+            }
+        }
+
+        //  T 切换翻译面板 
+        if (key === 't' && window._isImmersive && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            const translateBtn = document.getElementById('zh-translate-btn');
+            if(translateBtn) translateBtn.click();
+        }
+        
+    });
+
+    // 划词右键菜单
+    document.addEventListener('contextmenu', function(e) {
+        if(!window._isImmersive) return;
+        const sel = window.getSelection().toString().trim();
+        if(!sel) return;
+
+        const anchorNode = window.getSelection().anchorNode;
+        const anchorEl = anchorNode && anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode?.parentElement;
+        const paraNode = anchorEl ? anchorEl.closest('p, blockquote, li, table') : null;
+        const contextText = paraNode ? paraNode.innerText : "无额外上下文";
+
+        e.preventDefault();
+        showSelectionContextMenu(e, sel, contextText);
+    });
+
+
+
+    // 启动：直接进入沉浸模式
+    window.toggleImmersiveMode();
+})();
