@@ -4,7 +4,9 @@
 
 将知乎网页转化为极简沉浸式阅读环境。去除广告、侧边栏和视觉噪音，专注内容本身。
 
-适配页面：知乎首页推荐流、问答页 (`/question/`)、专栏文章页 (`/p/`)。
+适配页面：知乎首页推荐流(zhihu.com)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
+
+feature image:[点击查看脚本演示](https://www.google.comhttps://zhuanlan.zhihu.com/p/2039743943340991262)
 
 ---
 
