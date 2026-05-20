@@ -6,7 +6,7 @@
 
 适配页面：知乎首页推荐流(zhihu.com)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
 
-feature image:[点击查看脚本演示](https://www.google.comhttps://zhuanlan.zhihu.com/p/2039743943340991262)
+feature image:[点击查看脚本演示](https://zhuanlan.zhihu.com/p/2039743943340991262)
 
 ---
 
