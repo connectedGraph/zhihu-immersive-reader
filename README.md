@@ -85,12 +85,24 @@ feature image:[点击查看脚本演示](https://zhuanlan.zhihu.com/p/2039743943
 
 ---
 
-## 安装
+## 安装指南
+在安装本脚本之前，请确保您的浏览器已经安装了以下油猴扩展管理器中的任意一个：
 
-1. 安装 Tampermonkey 浏览器扩展
-2. 新建脚本，粘贴 `dist/bundle.user.js` 内容
-3. 匹配地址设为 `*://*.zhihu.com/*`，保存即可
+* [Tampermonkey](https://www.tampermonkey.net/) (推荐)
+* [Violentmonkey](https://violentmonkey.github.io/)
 
+### 一键安装
+点击下方的链接即可直接跳转安装：
+
+👉 **[点击这里安装脚本 (Greasy Fork)](https://greasyfork.org/zh-CN/scripts/573678)**
+
+### 手动安装
+1. 点击上面的安装链接进入脚本详情页。
+2. 点击页面上的 **“安装脚本”** 按钮。
+3. 在弹出的扩展管理窗口中确认安装即可。
+
+## 使用说明
+* 安装完成后，请刷新目标网页。
 ---
 
 ## 配置
