@@ -236,7 +236,7 @@ function S2translate(id, title, innerHTML) {
             autoTr: document.getElementById('zh-cfg-autotr').checked,
             autoHideImages: document.getElementById('zh-cfg-auto-hide-images').checked,
             imageMode: imageMode === 'collapse' ? 'collapse' : 'preview',
-            shareExportFormat: ['html', 'svg', 'png'].includes(shareFormat) ? shareFormat : 'svg',
+            shareExportFormat: ['html', 'svg', 'png', 'webp'].includes(shareFormat) ? shareFormat : 'svg',
             answerPreviewMode: document.getElementById('zh-cfg-answer-preview').value,
             wikiMaxItems: getFormNumber('zh-cfg-wiki-max', 100, 1),
             wikiConcurrency: getFormNumber('zh-cfg-wiki-concurrency', 20, 0),
@@ -244,7 +244,8 @@ function S2translate(id, title, innerHTML) {
             wikiFinalSynthesis: document.getElementById('zh-cfg-wiki-final').checked,
             embeddingHost: (document.getElementById('zh-cfg-embedding-host')?.value || '').trim(),
             embeddingModel: (document.getElementById('zh-cfg-embedding-model')?.value || '').trim() || 'text-embedding-3-small',
-            embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim()
+            embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim(),
+            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim()
         };
     }
 
@@ -329,6 +330,44 @@ function S2translate(id, title, innerHTML) {
         });
 
         document.getElementById('zh-preview-prompts-btn').addEventListener('click', showPromptPreviewModal);
+
+        document.getElementById('zh-fetch-collections-btn').addEventListener('click', async () => {
+            const status = document.getElementById('zh-fetch-collections-status');
+            const list = document.getElementById('zh-collections-list');
+            const input = document.getElementById('zh-cfg-collection-id');
+            status.textContent = '正在拉取...';
+            status.style.color = 'var(--zh-text)';
+            list.innerHTML = '';
+            try {
+                const collections = await fetchMyCollections(50);
+                if (!collections.length) {
+                    status.textContent = '未拉到任何收藏夹（可能未登录或账号下没有收藏夹）。';
+                    return;
+                }
+                const def = collections.find(c => c.isDefault);
+                status.textContent = def
+                    ? `共 ${collections.length} 个，默认收藏夹「${def.title}」(id=${def.id})。点击列表项可改填其它。`
+                    : `共 ${collections.length} 个收藏夹，点击即可填入 ID。`;
+                if (def && !input.value.trim()) input.value = def.id;
+                list.innerHTML = collections.map(c => `
+                    <div class="zh-collection-row" data-cid="${escapeHTML(c.id)}" style="display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid var(--zh-border);border-radius:4px;margin-bottom:4px;cursor:pointer;background:var(--zh-quote);">
+                        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(c.title)}${c.isDefault ? ' <span style="color:var(--zh-accent);font-size:11px;border:1px solid var(--zh-accent);padding:0 4px;border-radius:3px;margin-left:4px;">默认</span>' : ''}</span>
+                        <span style="opacity:.6;font-size:12px;flex-shrink:0;">${c.answerCount} 项 · id=${escapeHTML(c.id)}</span>
+                    </div>
+                `).join('');
+                list.querySelectorAll('.zh-collection-row').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const cid = row.getAttribute('data-cid');
+                        input.value = cid;
+                        status.style.color = 'green';
+                        status.textContent = `已填入收藏夹 ID：${cid}（记得保存）`;
+                    });
+                });
+            } catch (err) {
+                status.style.color = 'red';
+                status.textContent = '拉取失败：' + (err.message || err);
+            }
+        });
 
         // 保存配置按钮
         document.getElementById('zh-save-settings-btn').addEventListener('click', () => {

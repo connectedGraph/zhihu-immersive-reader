@@ -1,0 +1,29 @@
+// ==UserScript==
+// @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
+// @namespace    https://github.com/connectedGraph
+// @version      4.2.2
+// @description  让知乎成为你深度阅读、外语学习、认知提升的工具
+// @author       Rap
+// @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
+// @supportURL   https://github.com/connectedGraph/zhihu-immersive-reader/issues
+// @match        *://zhihu.com/
+// @match        *://www.zhihu.com/
+// @match        *://*.zhihu.com/question/*
+// @match        *://zhuanlan.zhihu.com/p/*
+// @match        *://*.zhuanlan.zhihu.com/p/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @connect      api.deepseek.com
+// @connect      zhihu.com
+// @connect      www.zhihu.com
+// @connect      zhuanlan.zhihu.com
+// @connect      *.zhihu.com
+// @connect      html2png.dev
+// @connect      *
+// @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/573678/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%9F%A5%E4%B9%8E_%E8%AE%A9%E7%9F%A5%E4%B9%8E%E6%88%90%E4%B8%BA%E4%BD%A0%E6%B7%B1%E5%BA%A6%E9%98%85%E8%AF%BB%E3%80%81%E5%A4%96%E8%AF%AD%E5%AD%A6%E4%B9%A0%E3%80%81%E8%AE%A4%E7%9F%A5%E6%8F%90%E5%8D%87%E7%9A%84%E5%B7%A5%E5%85%B7.user.js
+// @updateURL https://update.greasyfork.org/scripts/573678/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%9F%A5%E4%B9%8E_%E8%AE%A9%E7%9F%A5%E4%B9%8E%E6%88%90%E4%B8%BA%E4%BD%A0%E6%B7%B1%E5%BA%A6%E9%98%85%E8%AF%BB%E3%80%81%E5%A4%96%E8%AF%AD%E5%AD%A6%E4%B9%A0%E3%80%81%E8%AE%A4%E7%9F%A5%E6%8F%90%E5%8D%87%E7%9A%84%E5%B7%A5%E5%85%B7.meta.js
+// ==/UserScript==

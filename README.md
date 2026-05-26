@@ -4,11 +4,8 @@
 
 将知乎网页转化为极简沉浸式阅读环境。去除广告、侧边栏和视觉噪音，专注内容本身。
 
-适配页面：知乎首页推荐流(zhihu.com)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
+适配页面：知乎首页推荐流、问答页 (`/question/`)、专栏文章页 (`/p/`)。
 
-- feature image:[点击查看脚本演示](https://zhuanlan.zhihu.com/p/2039743943340991262)
-[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-green.svg)](https://greasyfork.org/zh-CN/scripts/573678)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ---
 
 ## 功能概览
@@ -27,6 +24,7 @@
 - 每组 6 篇，上下篇切换支持跨组自动加载
 - 切换动画（淡入 + 上滑）
 - 待读列表 (ToRead)：收藏感兴趣的推荐内容，侧栏一键查看
+- API 加载的卡片内置互动栏：赞同 / 反对 / 感谢（回答）/ 喜欢（文章）/ 收藏 / 评论跳转，无需跳转原页即可完成互动
 
 ### 翻译辅助
 
@@ -49,7 +47,7 @@
 
 ### 零损分享
 
-- 将当前沉浸阅读页面导出为 SVG / PNG / HTML
+- 将当前沉浸阅读页面导出为 SVG / PNG / WebP / HTML，PNG/WebP 支持公共转换 API 兜底
 - 保留主题配色和排版，适合跨平台分享
 
 ### 信息流 Wiki
@@ -85,24 +83,12 @@
 
 ---
 
-## 安装指南
-在安装本脚本之前，请确保您的浏览器已经安装了以下油猴扩展管理器中的任意一个：
+## 安装
 
-* [Tampermonkey](https://www.tampermonkey.net/) (推荐)
-* [Violentmonkey](https://violentmonkey.github.io/)
+1. 安装 Tampermonkey 浏览器扩展
+2. 新建脚本，粘贴 `dist/bundle.user.js` 内容
+3. 匹配地址设为 `*://*.zhihu.com/*`，保存即可
 
-### 一键安装
-点击下方的链接即可直接跳转安装：
-
-👉 **[点击这里安装脚本 (Greasy Fork)](https://greasyfork.org/zh-CN/scripts/573678)**
-
-### 手动安装
-1. 点击上面的安装链接进入脚本详情页。
-2. 点击页面上的 **“安装脚本”** 按钮。
-3. 在弹出的扩展管理窗口中确认安装即可。
-
-## 使用说明
-* 安装完成后，请刷新目标网页。
 ---
 
 ## 配置
@@ -113,6 +99,7 @@
 - **Embedding API**：独立的 Host / Key / Model（用于 Wiki 语义搜索，留空则复用主 API）
 - **Wiki 参数**：最大条目数、并发数、RPM 限制、是否生成总览
 - **阅读偏好**：目标翻译语言、自动摘要、自动翻译、图片自动隐藏、分享格式
+- **知乎互动 · 收藏夹**：填入默认收藏夹 ID，支持一键拉取账号下所有收藏夹列表并选择
 
 ---
 

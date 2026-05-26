@@ -1,11 +1,8 @@
-// ═══════════════════════════════════════════════════════════
-// 模块: meta.js
-// ═══════════════════════════════════════════════════════════
 // ==UserScript==
-// @name         知乎沉浸式翻译(API配置组-雷达进度修复版)
+// @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      1.20.0
-// @description  知乎通用沉浸式阅读+AI翻译 | API配置组 + 雷达进度保留 + Wiki配置快照 + 零损分享
+// @version      4.2.2
+// @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
 // @supportURL   https://github.com/connectedGraph/zhihu-immersive-reader/issues
@@ -24,7 +21,11 @@
 // @connect      www.zhihu.com
 // @connect      zhuanlan.zhihu.com
 // @connect      *.zhihu.com
+// @connect      html2png.dev
 // @connect      *
+// @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/573678/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%9F%A5%E4%B9%8E_%E8%AE%A9%E7%9F%A5%E4%B9%8E%E6%88%90%E4%B8%BA%E4%BD%A0%E6%B7%B1%E5%BA%A6%E9%98%85%E8%AF%BB%E3%80%81%E5%A4%96%E8%AF%AD%E5%AD%A6%E4%B9%A0%E3%80%81%E8%AE%A4%E7%9F%A5%E6%8F%90%E5%8D%87%E7%9A%84%E5%B7%A5%E5%85%B7.user.js
+// @updateURL https://update.greasyfork.org/scripts/573678/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%9F%A5%E4%B9%8E_%E8%AE%A9%E7%9F%A5%E4%B9%8E%E6%88%90%E4%B8%BA%E4%BD%A0%E6%B7%B1%E5%BA%A6%E9%98%85%E8%AF%BB%E3%80%81%E5%A4%96%E8%AF%AD%E5%AD%A6%E4%B9%A0%E3%80%81%E8%AE%A4%E7%9F%A5%E6%8F%90%E5%8D%87%E7%9A%84%E5%B7%A5%E5%85%B7.meta.js
 // ==/UserScript==
 
 // ═══════════════════════════════════════════════════════════
@@ -64,7 +65,8 @@ const DEFAULT_CONFIG = {
     wikiFinalSynthesis: true,
     embeddingHost: '',
     embeddingModel: 'text-embedding-3-small',
-    embeddingKey: ''
+    embeddingKey: '',
+    defaultCollectionId: ''
 };
 
 const EXPORT_HIDDEN_SELECTORS = [
@@ -260,6 +262,15 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    /* Action bar 按钮 */
+    .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }
+    .zh-action-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-text); cursor: pointer; font-family: inherit; font-size: 13px; line-height: 1.3; text-decoration: none !important; transition: all 0.15s ease; white-space: nowrap; }
+    .zh-action-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    .zh-action-btn.is-active { background: var(--zh-accent); color: var(--zh-paper); border-color: var(--zh-accent); }
+    .zh-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .zh-action-vote-up.is-active { background: #0066ff; border-color: #0066ff; color: #fff; }
+    .zh-action-vote-down.is-active { background: #f56c6c; border-color: #f56c6c; color: #fff; }
+    #immersive-wrapper .pc-article-answer-text-chain, #immersive-wrapper .pc-article-answer-big-img, #immersive-wrapper .ecommerce-ad-box, #immersive-wrapper .MCNLinkCard, #immersive-wrapper .RichText-MCNLinkCardContainer { display: none !important; }
     
     @keyframes zh-spin { 100% { transform: rotate(360deg); } }
     .zh-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--zh-accent); border-top-color: transparent; border-radius: 50%; animation: zh-spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }
@@ -480,8 +491,9 @@ const SETTINGS_MODAL_HTML = (cfg) => `
     </select>
     <label style="display:block; margin-bottom:5px;">零损分享导出格式:</label>
     <select id="zh-cfg-share-format" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（SVG 渲染）</option>
-        <option value="svg" ${!['html', 'png'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
+        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（本地渲染 + 公共 API 兜底）</option>
+        <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图（本地渲染 + 公共 API 兜底）</option>
+        <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
         <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
     </select>
     
@@ -516,6 +528,18 @@ const SETTINGS_MODAL_HTML = (cfg) => `
         <input type="password" id="zh-cfg-embedding-key" value="${cfg.embeddingKey || ''}" placeholder="留空则使用上方 API Key" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
     </div>
     
+    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
+        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">知乎互动 · 收藏夹</div>
+        <label style="display:block; margin-bottom:5px;">默认收藏夹 ID（用于一键收藏推荐流卡片）：</label>
+        <input type="text" id="zh-cfg-collection-id" value="${cfg.defaultCollectionId || ''}" placeholder="例如 905152952" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">拉取我的收藏夹</button>
+            <span id="zh-fetch-collections-status" style="font-size:12px; opacity:.7; align-self:center;"></span>
+        </div>
+        <div id="zh-collections-list" style="font-size:13px; line-height:1.7; max-height:160px; overflow:auto;"></div>
+        <div style="font-size:12px; opacity:.7; margin-top:6px;">点击列表中的收藏夹即可填入 ID。需登录知乎账号后操作。</div>
+    </div>
+
     <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
 `;
 
@@ -556,6 +580,7 @@ const HELP_MODAL_HTML = `
         </ul>
     </div>
 `;
+
 
 
 (function() {
@@ -1607,6 +1632,342 @@ const HELP_MODAL_HTML = `
 
 
 // ═══════════════════════════════════════════════════════════
+// 模块: zhihu-action.js
+// ═══════════════════════════════════════════════════════════
+    /**
+     * ============================================================================
+     * 知乎写操作 API（赞同 / 反对 / 感谢 / 喜欢 / 收藏）
+     *   - 同源请求，credentials:'include' 自动带 z_c0
+     *   - 必须手动加 x-xsrftoken（= cookie 里的 _xsrf）
+     *   - 不需要 x-zse-96，所有 voters/thankers/likers/collections 接口实测放行
+     * ============================================================================
+     */
+
+    const ZHIHU_API_BASE = 'https://www.zhihu.com';
+
+    function getXSRFToken() {
+        const match = document.cookie.match(/(?:^|;\s*)_xsrf=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function buildZhihuActionUrl(path, query) {
+        const url = path.startsWith('http')
+            ? new URL(path)
+            : new URL(path, ZHIHU_API_BASE);
+        if (query && typeof query === 'object') {
+            Object.entries(query).forEach(([k, v]) => {
+                if (v === undefined || v === null) return;
+                url.searchParams.set(k, String(v));
+            });
+        }
+        return url.href;
+    }
+
+    async function zhihuFetch(method, path, options = {}) {
+        const xsrf = getXSRFToken();
+        if (!xsrf) {
+            const err = new Error('缺少 _xsrf cookie，请先登录知乎');
+            err.code = 'NO_XSRF';
+            throw err;
+        }
+
+        const headers = {
+            'x-xsrftoken': xsrf,
+            'x-requested-with': 'fetch',
+            'accept': 'application/json, text/plain, */*'
+        };
+        let body;
+        if (options.body !== undefined) {
+            headers['content-type'] = 'application/json';
+            body = JSON.stringify(options.body);
+        }
+
+        const url = buildZhihuActionUrl(path, options.query);
+        const res = await fetch(url, {
+            method,
+            credentials: 'include',
+            headers,
+            body
+        });
+
+        const text = await res.text();
+        let data = null;
+        if (text) {
+            try { data = JSON.parse(text); } catch (err) { data = text; }
+        }
+
+        if (!res.ok) {
+            const message = (data && typeof data === 'object' && (data.error?.message || data.message))
+                || (typeof data === 'string' && data.slice(0, 200))
+                || `HTTP ${res.status}`;
+            const err = new Error(`知乎接口错误：${message}`);
+            err.status = res.status;
+            err.data = data;
+            throw err;
+        }
+
+        return { status: res.status, data };
+    }
+
+    function voteAnswer(answerId, dir) {
+        if (!answerId) throw new Error('voteAnswer 缺少 answerId');
+        if (!['up', 'down', 'neutral'].includes(dir)) throw new Error(`voteAnswer 非法方向：${dir}`);
+        return zhihuFetch('POST', `/api/v4/answers/${answerId}/voters`, { body: { type: dir } });
+    }
+
+    function voteArticle(articleId, dir) {
+        if (!articleId) throw new Error('voteArticle 缺少 articleId');
+        if (![1, -1, 0].includes(dir)) throw new Error(`voteArticle 非法方向：${dir}`);
+        return zhihuFetch('POST', `/api/v4/articles/${articleId}/voters`, { body: { voting: dir } });
+    }
+
+    function thankAnswer(answerId, on) {
+        if (!answerId) throw new Error('thankAnswer 缺少 answerId');
+        return on
+            ? zhihuFetch('POST', `/api/v4/answers/${answerId}/thankers`, { body: {} })
+            : zhihuFetch('DELETE', `/api/v4/answers/${answerId}/thankers`);
+    }
+
+    async function likeArticle(articleId, on) {
+        if (!articleId) throw new Error('likeArticle 缺少 articleId');
+        if (on) {
+            return zhihuFetch('POST', `/api/v4/articles/${articleId}/likers`, { body: {} });
+        }
+        try {
+            return await zhihuFetch('DELETE', `/api/v4/articles/${articleId}/likers`);
+        } catch (err) {
+            if (err.status === 404 || err.status === 405) {
+                return zhihuFetch('POST', `/api/v4/articles/${articleId}/likers`, { body: { liking: 0 } });
+            }
+            throw err;
+        }
+    }
+
+    function normalizeContentType(type) {
+        if (type === 'answer' || type === 'article') return type;
+        throw new Error(`未支持的收藏类型：${type}`);
+    }
+
+    function addCollection(collectionId, contentId, contentType) {
+        if (!collectionId) {
+            const err = new Error('未配置收藏夹 ID，请到设置面板填入');
+            err.code = 'NO_COLLECTION_ID';
+            throw err;
+        }
+        if (!contentId) throw new Error('addCollection 缺少 contentId');
+        const t = normalizeContentType(contentType);
+        return zhihuFetch('POST', `/api/v4/collections/${collectionId}/contents`, {
+            query: { content_id: contentId, content_type: t }
+        });
+    }
+
+    function removeCollection(collectionId, contentId, contentType) {
+        if (!collectionId) {
+            const err = new Error('未配置收藏夹 ID，请到设置面板填入');
+            err.code = 'NO_COLLECTION_ID';
+            throw err;
+        }
+        if (!contentId) throw new Error('removeCollection 缺少 contentId');
+        const t = normalizeContentType(contentType);
+        return zhihuFetch('DELETE', `/api/v4/collections/${collectionId}/contents/${contentId}`, {
+            query: { content_type: t }
+        });
+    }
+
+    async function fetchMyCollections(limit = 20) {
+        const me = await zhihuFetch('GET', '/api/v4/me');
+        const urlToken = me.data?.url_token;
+        if (!urlToken) {
+            const err = new Error('未获取到当前用户 url_token，请确认已登录');
+            err.code = 'NO_URL_TOKEN';
+            throw err;
+        }
+        const include = 'data[*].updated_time,answer_count,follower_count,creator,description,is_following,comment_count,created_time';
+        const res = await zhihuFetch('GET', `/api/v4/people/${urlToken}/collections`, {
+            query: { include, offset: 0, limit }
+        });
+        const list = Array.isArray(res.data?.data) ? res.data.data : [];
+        return list.map(item => ({
+            id: String(item.id),
+            title: item.title || '(未命名收藏夹)',
+            answerCount: item.answer_count ?? item.item_count ?? 0,
+            isDefault: item.is_default === true
+        }));
+    }
+
+    // ─── Action Bar 渲染层 ───────────────────────────────────────────────
+
+    const ACTION_ICONS = {
+        up: '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M13.792 3.681c-.781-1.406-2.803-1.406-3.584 0l-7.79 14.023c-.76 1.367.228 3.046 1.791 3.046h15.582c1.563 0 2.55-1.68 1.791-3.046l-7.79-14.023Z" clip-rule="evenodd"></path></svg>',
+        down: '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M13.792 20.319c-.781 1.406-2.803 1.406-3.584 0L2.418 6.296c-.76-1.367.228-3.046 1.791-3.046h15.582c1.563 0 2.55 1.68 1.791 3.046l-7.79 14.023Z" clip-rule="evenodd"></path></svg>',
+        comment: '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.37c5.67 0 10.266 4.085 10.267 9.125 0 2.08-.786 3.997-2.105 5.532a1.064 1.064 0 0 0-.247.91l.644 3.056c.24 1.157-.66 1.58-1.444 1.157l-2.925-1.584c-.53-.287-1.153-.338-1.743-.21-.784.172-1.604.265-2.447.265-5.67 0-10.268-4.087-10.268-9.126C1.732 6.455 6.33 2.37 12 2.37Z"></path></svg>',
+        star: '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="currentColor"><path d="M10.424 2.828c.7-1.213 2.452-1.213 3.152 0l2.47 4.285c.038.064.1.109.172.124l4.839 1.027c1.37.29 1.912 1.956.974 2.997l-3.312 3.674a.26.26 0 0 0-.065.201l.52 4.92c.146 1.393-1.27 2.422-2.55 1.852l-4.518-2.014a.26.26 0 0 0-.212 0l-4.518 2.014c-1.28.57-2.696-.46-2.55-1.853l.52-4.919a.26.26 0 0 0-.065-.2L1.969 11.26c-.938-1.041-.396-2.707.974-2.997l4.839-1.027a.26.26 0 0 0 .171-.124l2.471-4.285Z"></path></svg>',
+        heart: '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.984 3.324c1.73.315 3.125 1.472 4.04 2.978 1.893 3.116.758 6.989-1.384 9.556a23.241 23.241 0 0 1-3.96 3.737c-.66.486-1.308.895-1.902 1.196-.579.294-1.166.517-1.695.57a.845.845 0 0 1-.145.002c-.529-.038-1.127-.267-1.708-.564a14.407 14.407 0 0 1-1.947-1.232 23.512 23.512 0 0 1-4.081-3.88C2.165 13.207 1.139 9.536 2.85 6.514 3.742 4.94 5.14 3.71 6.896 3.348c1.606-.332 3.363.094 5.103 1.394 1.696-1.267 3.409-1.704 4.985-1.418Z" clip-rule="evenodd"></path></svg>'
+    };
+
+    const _actionThrottles = new Map();
+
+    function isActionThrottled(key) {
+        const now = Date.now();
+        if (_actionThrottles.has(key) && now - _actionThrottles.get(key) < 1000) return true;
+        _actionThrottles.set(key, now);
+        return false;
+    }
+
+    function buildActionBar(record) {
+        const bar = document.createElement('div');
+        bar.className = 'ContentItem-actions zh-api-action-bar';
+        bar.dataset.recordKey = record.key || '';
+
+        const isAnswer = record.apiTargetType === 'answer';
+        const isArticle = record.apiTargetType === 'article';
+        const hasVote = isAnswer || isArticle;
+        const hasThank = isAnswer;
+        const hasLike = isArticle;
+
+        const voteCount = record.voteup_count ?? 0;
+        const isVotedUp = record.voting === 1;
+        const isVotedDown = record.voting === -1;
+
+        let html = '';
+
+        if (hasVote) {
+            html += `<button class="zh-action-btn zh-action-vote-up${isVotedUp ? ' is-active' : ''}" data-action="vote-up" title="赞同">
+                <span style="display:inline-flex;align-items:center">${ACTION_ICONS.up}</span>
+                ${isVotedUp ? '已赞同' : '赞同'}${voteCount > 0 ? ' ' + voteCount : ''}
+            </button>`;
+            html += `<button class="zh-action-btn zh-action-vote-down${isVotedDown ? ' is-active' : ''}" data-action="vote-down" title="反对">
+                <span style="display:inline-flex;align-items:center">${ACTION_ICONS.down}</span>
+            </button>`;
+        }
+
+        if (record.comment_count != null) {
+            html += `<a class="zh-action-btn zh-action-comment" href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer" title="查看评论">
+                <span style="display:inline-flex;align-items:center">${ACTION_ICONS.comment}</span>
+                ${record.comment_count > 0 ? record.comment_count + ' 评论' : '评论'}
+            </a>`;
+        }
+
+        html += `<button class="zh-action-btn zh-action-collect${record.collected ? ' is-active' : ''}" data-action="collect" title="收藏">
+            <span style="display:inline-flex;align-items:center">${ACTION_ICONS.star}</span>
+            ${record.collected ? '已收藏' : '收藏'}${record.favlists_count > 0 ? ' ' + record.favlists_count : ''}
+        </button>`;
+
+        if (hasThank) {
+            html += `<button class="zh-action-btn zh-action-thank${record.thanked ? ' is-active' : ''}" data-action="thank" title="感谢">
+                <span style="display:inline-flex;align-items:center">${ACTION_ICONS.heart}</span>
+                ${record.thanked ? '已感谢' : '感谢'}
+            </button>`;
+        }
+        if (hasLike) {
+            html += `<button class="zh-action-btn zh-action-like${record.liked ? ' is-active' : ''}" data-action="like" title="喜欢">
+                <span style="display:inline-flex;align-items:center">${ACTION_ICONS.heart}</span>
+                ${record.liked ? '已喜欢' : '喜欢'}
+            </button>`;
+        }
+
+        html += `<a class="zh-action-btn zh-action-open" href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer">打开原文</a>`;
+
+        bar.innerHTML = html;
+        bindActionBar(bar, record);
+        return bar;
+    }
+
+    function bindActionBar(bar, record) {
+        bar.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                const throttleKey = `${record.key}::${action}`;
+                if (isActionThrottled(throttleKey)) return;
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                try {
+                    await executeAction(record, action);
+                    refreshActionBar(bar, record);
+                } catch (err) {
+                    console.warn('知乎互动失败:', action, err);
+                    if (err.code === 'NO_COLLECTION_ID') {
+                        showToast('请先到设置面板填入收藏夹 ID');
+                    } else if (err.code === 'NO_XSRF' || err.status === 401) {
+                        showToast('请先登录知乎');
+                    } else {
+                        showToast('操作失败：' + (err.message || err).slice(0, 60));
+                    }
+                } finally {
+                    btn.disabled = false;
+                    btn.style.opacity = '';
+                }
+            });
+        });
+    }
+
+    async function executeAction(record, action) {
+        const id = record.apiTargetId;
+        const isAnswer = record.apiTargetType === 'answer';
+        const isArticle = record.apiTargetType === 'article';
+
+        switch (action) {
+            case 'vote-up': {
+                const newDir = record.voting === 1 ? 'neutral' : 'up';
+                if (isAnswer) {
+                    await voteAnswer(id, newDir === 'up' ? 'up' : 'neutral');
+                } else {
+                    await voteArticle(id, newDir === 'up' ? 1 : 0);
+                }
+                record.voting = newDir === 'up' ? 1 : 0;
+                if (newDir === 'up') record.voteup_count = (record.voteup_count || 0) + 1;
+                else record.voteup_count = Math.max(0, (record.voteup_count || 0) - 1);
+                break;
+            }
+            case 'vote-down': {
+                const newDir = record.voting === -1 ? 'neutral' : 'down';
+                if (record.voting === 1) record.voteup_count = Math.max(0, (record.voteup_count || 0) - 1);
+                if (isAnswer) {
+                    await voteAnswer(id, newDir === 'down' ? 'down' : 'neutral');
+                } else {
+                    await voteArticle(id, newDir === 'down' ? -1 : 0);
+                }
+                record.voting = newDir === 'down' ? -1 : 0;
+                break;
+            }
+            case 'thank': {
+                const on = !record.thanked;
+                await thankAnswer(id, on);
+                record.thanked = on;
+                break;
+            }
+            case 'like': {
+                const on = !record.liked;
+                await likeArticle(id, on);
+                record.liked = on;
+                break;
+            }
+            case 'collect': {
+                const cid = config.defaultCollectionId;
+                const contentType = isAnswer ? 'answer' : 'article';
+                if (record.collected) {
+                    await removeCollection(cid, id, contentType);
+                    record.collected = false;
+                } else {
+                    await addCollection(cid, id, contentType);
+                    record.collected = true;
+                }
+                break;
+            }
+        }
+        persistHomeFeedCache();
+    }
+
+    function refreshActionBar(bar, record) {
+        const newBar = buildActionBar(record);
+        bar.innerHTML = newBar.innerHTML;
+        bindActionBar(bar, record);
+    }
+
+
+// ═══════════════════════════════════════════════════════════
 // 模块: cache.js
 // ═══════════════════════════════════════════════════════════
     function openQuestionCacheDB() {
@@ -1987,7 +2348,7 @@ function S2translate(id, title, innerHTML) {
             autoTr: document.getElementById('zh-cfg-autotr').checked,
             autoHideImages: document.getElementById('zh-cfg-auto-hide-images').checked,
             imageMode: imageMode === 'collapse' ? 'collapse' : 'preview',
-            shareExportFormat: ['html', 'svg', 'png'].includes(shareFormat) ? shareFormat : 'svg',
+            shareExportFormat: ['html', 'svg', 'png', 'webp'].includes(shareFormat) ? shareFormat : 'svg',
             answerPreviewMode: document.getElementById('zh-cfg-answer-preview').value,
             wikiMaxItems: getFormNumber('zh-cfg-wiki-max', 100, 1),
             wikiConcurrency: getFormNumber('zh-cfg-wiki-concurrency', 20, 0),
@@ -1995,7 +2356,8 @@ function S2translate(id, title, innerHTML) {
             wikiFinalSynthesis: document.getElementById('zh-cfg-wiki-final').checked,
             embeddingHost: (document.getElementById('zh-cfg-embedding-host')?.value || '').trim(),
             embeddingModel: (document.getElementById('zh-cfg-embedding-model')?.value || '').trim() || 'text-embedding-3-small',
-            embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim()
+            embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim(),
+            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim()
         };
     }
 
@@ -2080,6 +2442,44 @@ function S2translate(id, title, innerHTML) {
         });
 
         document.getElementById('zh-preview-prompts-btn').addEventListener('click', showPromptPreviewModal);
+
+        document.getElementById('zh-fetch-collections-btn').addEventListener('click', async () => {
+            const status = document.getElementById('zh-fetch-collections-status');
+            const list = document.getElementById('zh-collections-list');
+            const input = document.getElementById('zh-cfg-collection-id');
+            status.textContent = '正在拉取...';
+            status.style.color = 'var(--zh-text)';
+            list.innerHTML = '';
+            try {
+                const collections = await fetchMyCollections(50);
+                if (!collections.length) {
+                    status.textContent = '未拉到任何收藏夹（可能未登录或账号下没有收藏夹）。';
+                    return;
+                }
+                const def = collections.find(c => c.isDefault);
+                status.textContent = def
+                    ? `共 ${collections.length} 个，默认收藏夹「${def.title}」(id=${def.id})。点击列表项可改填其它。`
+                    : `共 ${collections.length} 个收藏夹，点击即可填入 ID。`;
+                if (def && !input.value.trim()) input.value = def.id;
+                list.innerHTML = collections.map(c => `
+                    <div class="zh-collection-row" data-cid="${escapeHTML(c.id)}" style="display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid var(--zh-border);border-radius:4px;margin-bottom:4px;cursor:pointer;background:var(--zh-quote);">
+                        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(c.title)}${c.isDefault ? ' <span style="color:var(--zh-accent);font-size:11px;border:1px solid var(--zh-accent);padding:0 4px;border-radius:3px;margin-left:4px;">默认</span>' : ''}</span>
+                        <span style="opacity:.6;font-size:12px;flex-shrink:0;">${c.answerCount} 项 · id=${escapeHTML(c.id)}</span>
+                    </div>
+                `).join('');
+                list.querySelectorAll('.zh-collection-row').forEach(row => {
+                    row.addEventListener('click', () => {
+                        const cid = row.getAttribute('data-cid');
+                        input.value = cid;
+                        status.style.color = 'green';
+                        status.textContent = `已填入收藏夹 ID：${cid}（记得保存）`;
+                    });
+                });
+            } catch (err) {
+                status.style.color = 'red';
+                status.textContent = '拉取失败：' + (err.message || err);
+            }
+        });
 
         // 保存配置按钮
         document.getElementById('zh-save-settings-btn').addEventListener('click', () => {
@@ -3935,7 +4335,15 @@ ${page.xhtml}
         document.body.appendChild(createCopyMarkdownBtn());
 
         const tocNode = _articleNode.querySelector('.css-u56wtg') || document.querySelector('.CatalogBtn') || document.querySelector('[aria-label="目录"]');
-        if (tocNode) tocNode.classList.add('zh-toc-fixed-style');
+        if (tocNode) {
+            tocNode.classList.add('zh-toc-fixed-style');
+            tocNode.addEventListener('click', (e) => {
+                if (e.target === tocNode) {
+                    const inner = tocNode.querySelector('a, button');
+                    if (inner) inner.click();
+                }
+            });
+        }
 
         const timeNode = _articleNode.querySelector('.ContentItem-time') || _articleNode.querySelector('.Post-Sub');
         if (timeNode) {
@@ -4913,7 +5321,7 @@ ${page.xhtml}
             </div>
             ${thumbnailHTML}
             <div class="RichText ztext">${getHomeApiTargetHTML(target, record.text)}</div>
-            <div class="ContentItem-actions"><a href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer">打开原文</a></div>
+            <div class="zh-api-action-slot"></div>
         `;
         return cleanupHomeClone(clone);
     }
@@ -4950,8 +5358,17 @@ ${page.xhtml}
             apiFeedId: feedItem?.id || '',
             apiOffset: feedItem?.offset,
             apiTargetType: target.type || '',
+            apiTargetId: String(target.id || ''),
             apiContentLength: apiFullContentText.length,
-            apiHasFullContent: apiFullContentText.length >= 80
+            apiHasFullContent: apiFullContentText.length >= 80,
+            voting: (target.relationship?.voting) ?? 0,
+            thanked: !!(target.relationship?.is_thanked),
+            liked: false,
+            collected: false,
+            voteup_count: target.voteup_count ?? 0,
+            comment_count: target.comment_count ?? 0,
+            thanks_count: target.thanks_count ?? 0,
+            favlists_count: target.favlists_count ?? target.favorite_count ?? 0
         };
         record.clone = buildHomeApiClone(record, target);
         return record;
@@ -5483,6 +5900,12 @@ ${page.xhtml}
             view.appendChild(cleanupHomeClone(itemRecord.clone.cloneNode(true)));
         }
         wrapper.appendChild(view);
+
+        if (itemRecord.apiTargetId) {
+            const slot = view.querySelector('.zh-api-action-slot');
+            if (slot) slot.replaceWith(buildActionBar(itemRecord));
+        }
+
         setupImageToggles();
         startArticleAdCleanup();
         window.scrollTo(0, 0);

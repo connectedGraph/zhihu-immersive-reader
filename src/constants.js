@@ -32,7 +32,8 @@ const DEFAULT_CONFIG = {
     wikiFinalSynthesis: true,
     embeddingHost: '',
     embeddingModel: 'text-embedding-3-small',
-    embeddingKey: ''
+    embeddingKey: '',
+    defaultCollectionId: ''
 };
 
 const EXPORT_HIDDEN_SELECTORS = [
