@@ -193,7 +193,7 @@
             </div>
             ${thumbnailHTML}
             <div class="RichText ztext">${getHomeApiTargetHTML(target, record.text)}</div>
-            <div class="ContentItem-actions"><a href="${escapeHTML(record.url || '#')}" target="_blank" rel="noopener noreferrer">打开原文</a></div>
+            <div class="zh-api-action-slot"></div>
         `;
         return cleanupHomeClone(clone);
     }
@@ -230,8 +230,17 @@
             apiFeedId: feedItem?.id || '',
             apiOffset: feedItem?.offset,
             apiTargetType: target.type || '',
+            apiTargetId: String(target.id || ''),
             apiContentLength: apiFullContentText.length,
-            apiHasFullContent: apiFullContentText.length >= 80
+            apiHasFullContent: apiFullContentText.length >= 80,
+            voting: (target.relationship?.voting) ?? 0,
+            thanked: !!(target.relationship?.is_thanked),
+            liked: false,
+            collected: false,
+            voteup_count: target.voteup_count ?? 0,
+            comment_count: target.comment_count ?? 0,
+            thanks_count: target.thanks_count ?? 0,
+            favlists_count: target.favlists_count ?? target.favorite_count ?? 0
         };
         record.clone = buildHomeApiClone(record, target);
         return record;
@@ -763,6 +772,12 @@
             view.appendChild(cleanupHomeClone(itemRecord.clone.cloneNode(true)));
         }
         wrapper.appendChild(view);
+
+        if (itemRecord.apiTargetId) {
+            const slot = view.querySelector('.zh-api-action-slot');
+            if (slot) slot.replaceWith(buildActionBar(itemRecord));
+        }
+
         setupImageToggles();
         startArticleAdCleanup();
         window.scrollTo(0, 0);

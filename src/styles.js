@@ -137,6 +137,15 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    /* Action bar 按钮 */
+    .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }
+    .zh-action-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-text); cursor: pointer; font-family: inherit; font-size: 13px; line-height: 1.3; text-decoration: none !important; transition: all 0.15s ease; white-space: nowrap; }
+    .zh-action-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    .zh-action-btn.is-active { background: var(--zh-accent); color: var(--zh-paper); border-color: var(--zh-accent); }
+    .zh-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .zh-action-vote-up.is-active { background: #0066ff; border-color: #0066ff; color: #fff; }
+    .zh-action-vote-down.is-active { background: #f56c6c; border-color: #f56c6c; color: #fff; }
+    #immersive-wrapper .pc-article-answer-text-chain, #immersive-wrapper .pc-article-answer-big-img, #immersive-wrapper .ecommerce-ad-box, #immersive-wrapper .MCNLinkCard, #immersive-wrapper .RichText-MCNLinkCardContainer { display: none !important; }
     
     @keyframes zh-spin { 100% { transform: rotate(360deg); } }
     .zh-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--zh-accent); border-top-color: transparent; border-radius: 50%; animation: zh-spin 1s linear infinite; vertical-align: middle; margin-right: 8px; }

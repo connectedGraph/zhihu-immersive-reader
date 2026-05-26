@@ -47,8 +47,9 @@ const SETTINGS_MODAL_HTML = (cfg) => `
     </select>
     <label style="display:block; margin-bottom:5px;">零损分享导出格式:</label>
     <select id="zh-cfg-share-format" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（SVG 渲染）</option>
-        <option value="svg" ${!['html', 'png'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
+        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（本地渲染 + 公共 API 兜底）</option>
+        <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图（本地渲染 + 公共 API 兜底）</option>
+        <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
         <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
     </select>
     
@@ -83,6 +84,18 @@ const SETTINGS_MODAL_HTML = (cfg) => `
         <input type="password" id="zh-cfg-embedding-key" value="${cfg.embeddingKey || ''}" placeholder="留空则使用上方 API Key" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
     </div>
     
+    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
+        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">知乎互动 · 收藏夹</div>
+        <label style="display:block; margin-bottom:5px;">默认收藏夹 ID（用于一键收藏推荐流卡片）：</label>
+        <input type="text" id="zh-cfg-collection-id" value="${cfg.defaultCollectionId || ''}" placeholder="例如 905152952" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">拉取我的收藏夹</button>
+            <span id="zh-fetch-collections-status" style="font-size:12px; opacity:.7; align-self:center;"></span>
+        </div>
+        <div id="zh-collections-list" style="font-size:13px; line-height:1.7; max-height:160px; overflow:auto;"></div>
+        <div style="font-size:12px; opacity:.7; margin-top:6px;">点击列表中的收藏夹即可填入 ID。需登录知乎账号后操作。</div>
+    </div>
+
     <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
 `;
 
