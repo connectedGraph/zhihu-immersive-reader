@@ -51,13 +51,35 @@
             wikiBtn.innerHTML = ICONS.wiki;
             wikiBtn.addEventListener('click', renderWikiDashboard);
             toolsPanel.appendChild(wikiBtn);
+        }
 
-            const toreadListBtn = document.createElement('button');
-            toreadListBtn.className = 'zh-square-btn';
-            toreadListBtn.title = '待读列表';
-            toreadListBtn.innerHTML = ICONS.toread;
-            toreadListBtn.addEventListener('click', showToReadListModal);
-            toolsPanel.appendChild(toreadListBtn);
+        const toreadListBtn = document.createElement('button');
+        toreadListBtn.className = 'zh-square-btn';
+        toreadListBtn.title = '待读列表';
+        toreadListBtn.innerHTML = ICONS.toread;
+        toreadListBtn.addEventListener('click', showToReadListModal);
+        toolsPanel.appendChild(toreadListBtn);
+
+        if (!isHomePage()) {
+            const toreadAddBtn = document.createElement('button');
+            toreadAddBtn.className = 'zh-square-btn';
+            toreadAddBtn.title = '将当前页加入/移除待读列表';
+            toreadAddBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>';
+            const currentUrl = location.href.replace(/#.*$/, '');
+            const currentTitle = (document.querySelector('h1.QuestionHeader-title')?.innerText
+                || document.querySelector('.Post-Title')?.innerText
+                || document.title || '知乎内容').trim();
+            if (isInToReadList(currentUrl)) toreadAddBtn.classList.add('zh-btn-active');
+            toreadAddBtn.addEventListener('click', () => {
+                const record = {
+                    url: currentUrl,
+                    title: currentTitle,
+                    author: (document.querySelector('.AuthorInfo-name')?.innerText || '').trim(),
+                    type: isPostPage() ? '专栏文章' : '问题回答'
+                };
+                toggleToReadItem(record, toreadAddBtn);
+            });
+            toolsPanel.appendChild(toreadAddBtn);
         }
 
         const helpBtn = document.createElement('button');

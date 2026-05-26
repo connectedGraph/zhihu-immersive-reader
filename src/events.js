@@ -3,6 +3,10 @@
      * 事件监听：键盘快捷键 & 划词右键菜单
      * ============================================================================
      */
+    function isEditPage() {
+        return /\/p\/\d+\/edit/.test(location.pathname) || /\/edit/.test(location.pathname);
+    }
+
     window.addEventListener('keydown', function(e) {
         const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
         const typing = isTypingTarget(e.target);
@@ -37,6 +41,7 @@
 
         if (e.ctrlKey || e.metaKey) {
             if (key === 'e') {
+                if (isEditPage()) return;
                 e.preventDefault();
                 window.toggleImmersiveMode();
             } else if (key === 'h' && window._isImmersive) {
@@ -72,6 +77,6 @@
 
 
 
-    // 启动：直接进入沉浸模式
-    window.toggleImmersiveMode();
+    // 启动：非编辑页时自动进入沉浸模式
+    if (!isEditPage()) window.toggleImmersiveMode();
 })();

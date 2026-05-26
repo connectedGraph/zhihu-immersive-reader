@@ -1,8 +1,23 @@
-    let currentThemeIndex = 0;
+    const THEME_STORAGE_KEY = 'zh-immersive-theme-index';
+    let currentThemeIndex = (() => {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const gm = GM_getValue(THEME_STORAGE_KEY, null);
+                if (gm !== null) { const idx = parseInt(gm, 10); if (idx >= 0 && idx < THEMES.length) return idx; }
+            }
+            const saved = localStorage.getItem(THEME_STORAGE_KEY);
+            const idx = saved !== null ? parseInt(saved, 10) : 0;
+            return (idx >= 0 && idx < THEMES.length) ? idx : 0;
+        } catch (e) { return 0; }
+    })();
     function applyTheme(index) {
-        const theme = THEMES[index];
+        const safeIndex = (index >= 0 && index < THEMES.length) ? index : 0;
+        currentThemeIndex = safeIndex;
+        const theme = THEMES[safeIndex];
         const root = document.documentElement;
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
+        try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
     }
 
     function sanitizeLLMHTML(content) {

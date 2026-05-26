@@ -2110,11 +2110,26 @@ const HELP_MODAL_HTML = `
 // ═══════════════════════════════════════════════════════════
 // 模块: ui.js
 // ═══════════════════════════════════════════════════════════
-    let currentThemeIndex = 0;
+    const THEME_STORAGE_KEY = 'zh-immersive-theme-index';
+    let currentThemeIndex = (() => {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const gm = GM_getValue(THEME_STORAGE_KEY, null);
+                if (gm !== null) { const idx = parseInt(gm, 10); if (idx >= 0 && idx < THEMES.length) return idx; }
+            }
+            const saved = localStorage.getItem(THEME_STORAGE_KEY);
+            const idx = saved !== null ? parseInt(saved, 10) : 0;
+            return (idx >= 0 && idx < THEMES.length) ? idx : 0;
+        } catch (e) { return 0; }
+    })();
     function applyTheme(index) {
-        const theme = THEMES[index];
+        const safeIndex = (index >= 0 && index < THEMES.length) ? index : 0;
+        currentThemeIndex = safeIndex;
+        const theme = THEMES[safeIndex];
         const root = document.documentElement;
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
+        try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
     }
 
     function sanitizeLLMHTML(content) {
@@ -7810,13 +7825,35 @@ credibilityReason：一句话说明可信度原因
             wikiBtn.innerHTML = ICONS.wiki;
             wikiBtn.addEventListener('click', renderWikiDashboard);
             toolsPanel.appendChild(wikiBtn);
+        }
 
-            const toreadListBtn = document.createElement('button');
-            toreadListBtn.className = 'zh-square-btn';
-            toreadListBtn.title = '待读列表';
-            toreadListBtn.innerHTML = ICONS.toread;
-            toreadListBtn.addEventListener('click', showToReadListModal);
-            toolsPanel.appendChild(toreadListBtn);
+        const toreadListBtn = document.createElement('button');
+        toreadListBtn.className = 'zh-square-btn';
+        toreadListBtn.title = '待读列表';
+        toreadListBtn.innerHTML = ICONS.toread;
+        toreadListBtn.addEventListener('click', showToReadListModal);
+        toolsPanel.appendChild(toreadListBtn);
+
+        if (!isHomePage()) {
+            const toreadAddBtn = document.createElement('button');
+            toreadAddBtn.className = 'zh-square-btn';
+            toreadAddBtn.title = '将当前页加入/移除待读列表';
+            toreadAddBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>';
+            const currentUrl = location.href.replace(/#.*$/, '');
+            const currentTitle = (document.querySelector('h1.QuestionHeader-title')?.innerText
+                || document.querySelector('.Post-Title')?.innerText
+                || document.title || '知乎内容').trim();
+            if (isInToReadList(currentUrl)) toreadAddBtn.classList.add('zh-btn-active');
+            toreadAddBtn.addEventListener('click', () => {
+                const record = {
+                    url: currentUrl,
+                    title: currentTitle,
+                    author: (document.querySelector('.AuthorInfo-name')?.innerText || '').trim(),
+                    type: isPostPage() ? '专栏文章' : '问题回答'
+                };
+                toggleToReadItem(record, toreadAddBtn);
+            });
+            toolsPanel.appendChild(toreadAddBtn);
         }
 
         const helpBtn = document.createElement('button');
@@ -8071,6 +8108,10 @@ function enterImmersive() {
      * 事件监听：键盘快捷键 & 划词右键菜单
      * ============================================================================
      */
+    function isEditPage() {
+        return /\/p\/\d+\/edit/.test(location.pathname) || /\/edit/.test(location.pathname);
+    }
+
     window.addEventListener('keydown', function(e) {
         const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
         const typing = isTypingTarget(e.target);
@@ -8105,6 +8146,7 @@ function enterImmersive() {
 
         if (e.ctrlKey || e.metaKey) {
             if (key === 'e') {
+                if (isEditPage()) return;
                 e.preventDefault();
                 window.toggleImmersiveMode();
             } else if (key === 'h' && window._isImmersive) {
@@ -8140,7 +8182,7 @@ function enterImmersive() {
 
 
 
-    // 启动：直接进入沉浸模式
-    window.toggleImmersiveMode();
+    // 启动：非编辑页时自动进入沉浸模式
+    if (!isEditPage()) window.toggleImmersiveMode();
 })();
 
