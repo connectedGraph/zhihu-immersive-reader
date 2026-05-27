@@ -871,3 +871,21 @@
             _homeState.collecting = false;
         }
     }
+
+    function createPageToReadBtn(url, title, author, type) {
+        const cleanUrl = (url || location.href).replace(/#.*$/, '');
+        const btn = document.createElement('button');
+        btn.className = 'zh-inline-btn zh-toread-btn zh-page-toread-btn' + (isInToReadList(cleanUrl) ? ' zh-btn-active' : '');
+        btn.title = '加入/移除待读列表';
+        btn.innerHTML = ICONS.toread;
+        btn.addEventListener('click', () => {
+            const record = {
+                url: cleanUrl,
+                title: title || document.title || '知乎内容',
+                author: author || '',
+                type: type || '知乎内容'
+            };
+            toggleToReadItem(record, btn);
+        });
+        return btn;
+    }

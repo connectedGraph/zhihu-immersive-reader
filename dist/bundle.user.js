@@ -4349,6 +4349,16 @@ ${page.xhtml}
         reactRoot.appendChild(wrapper);
         document.body.appendChild(createCopyMarkdownBtn());
 
+        const postToreadBtn = createPageToReadBtn(
+            location.href,
+            document.querySelector('.Post-Title')?.innerText || document.title,
+            document.querySelector('.AuthorInfo-name')?.innerText || '',
+            '专栏文章'
+        );
+        postToreadBtn.style.cssText = 'position:absolute;top:18px;right:18px;z-index:3;';
+        wrapper.style.position = 'relative';
+        wrapper.appendChild(postToreadBtn);
+
         const tocNode = _articleNode.querySelector('.css-u56wtg') || document.querySelector('.CatalogBtn') || document.querySelector('[aria-label="目录"]');
         if (tocNode) {
             tocNode.classList.add('zh-toc-fixed-style');
@@ -5048,6 +5058,16 @@ ${page.xhtml}
         current.className = 'zh-nav-current';
         current.textContent = `当前第 ${safeIndex + 1} / ${_questionState.answers.length}`;
         toolbar.appendChild(current);
+
+        const answerUrl = answer.key && /^https?:\/\//.test(answer.key) ? answer.key : location.href;
+        const qToreadBtn = createPageToReadBtn(
+            answerUrl,
+            _questionState.questionTitle || document.title,
+            answer.author || '',
+            '问题回答'
+        );
+        toolbar.appendChild(qToreadBtn);
+
         wrapper.appendChild(toolbar);
 
         const view = document.createElement('div');
@@ -6013,6 +6033,24 @@ ${page.xhtml}
         } finally {
             _homeState.collecting = false;
         }
+    }
+
+    function createPageToReadBtn(url, title, author, type) {
+        const cleanUrl = (url || location.href).replace(/#.*$/, '');
+        const btn = document.createElement('button');
+        btn.className = 'zh-inline-btn zh-toread-btn zh-page-toread-btn' + (isInToReadList(cleanUrl) ? ' zh-btn-active' : '');
+        btn.title = '加入/移除待读列表';
+        btn.innerHTML = ICONS.toread;
+        btn.addEventListener('click', () => {
+            const record = {
+                url: cleanUrl,
+                title: title || document.title || '知乎内容',
+                author: author || '',
+                type: type || '知乎内容'
+            };
+            toggleToReadItem(record, btn);
+        });
+        return btn;
     }
 
 
@@ -7834,28 +7872,6 @@ credibilityReason：一句话说明可信度原因
         toreadListBtn.addEventListener('click', showToReadListModal);
         toolsPanel.appendChild(toreadListBtn);
 
-        if (!isHomePage()) {
-            const toreadAddBtn = document.createElement('button');
-            toreadAddBtn.className = 'zh-square-btn';
-            toreadAddBtn.title = '将当前页加入/移除待读列表';
-            toreadAddBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>';
-            const currentUrl = location.href.replace(/#.*$/, '');
-            const currentTitle = (document.querySelector('h1.QuestionHeader-title')?.innerText
-                || document.querySelector('.Post-Title')?.innerText
-                || document.title || '知乎内容').trim();
-            if (isInToReadList(currentUrl)) toreadAddBtn.classList.add('zh-btn-active');
-            toreadAddBtn.addEventListener('click', () => {
-                const record = {
-                    url: currentUrl,
-                    title: currentTitle,
-                    author: (document.querySelector('.AuthorInfo-name')?.innerText || '').trim(),
-                    type: isPostPage() ? '专栏文章' : '问题回答'
-                };
-                toggleToReadItem(record, toreadAddBtn);
-            });
-            toolsPanel.appendChild(toreadAddBtn);
-        }
-
         const helpBtn = document.createElement('button');
         helpBtn.className = 'zh-square-btn';
         helpBtn.title = '帮助 (快捷键说明)';
@@ -7876,8 +7892,8 @@ credibilityReason：一句话说明可信度原因
 
         toolsPanel.appendChild(translateBtn);
         toolsPanel.appendChild(expressionBtn);
+        toolsPanel.appendChild(radarBtn);
         if (!isHomePage()) {
-            toolsPanel.appendChild(radarBtn);
             toolsPanel.appendChild(shareBtn);
         }
         toolsPanel.appendChild(settingsBtn);

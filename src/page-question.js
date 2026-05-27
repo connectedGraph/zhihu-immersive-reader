@@ -567,6 +567,16 @@
         current.className = 'zh-nav-current';
         current.textContent = `当前第 ${safeIndex + 1} / ${_questionState.answers.length}`;
         toolbar.appendChild(current);
+
+        const answerUrl = answer.key && /^https?:\/\//.test(answer.key) ? answer.key : location.href;
+        const qToreadBtn = createPageToReadBtn(
+            answerUrl,
+            _questionState.questionTitle || document.title,
+            answer.author || '',
+            '问题回答'
+        );
+        toolbar.appendChild(qToreadBtn);
+
         wrapper.appendChild(toolbar);
 
         const view = document.createElement('div');

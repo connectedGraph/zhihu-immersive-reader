@@ -113,6 +113,16 @@
         reactRoot.appendChild(wrapper);
         document.body.appendChild(createCopyMarkdownBtn());
 
+        const postToreadBtn = createPageToReadBtn(
+            location.href,
+            document.querySelector('.Post-Title')?.innerText || document.title,
+            document.querySelector('.AuthorInfo-name')?.innerText || '',
+            '专栏文章'
+        );
+        postToreadBtn.style.cssText = 'position:absolute;top:18px;right:18px;z-index:3;';
+        wrapper.style.position = 'relative';
+        wrapper.appendChild(postToreadBtn);
+
         const tocNode = _articleNode.querySelector('.css-u56wtg') || document.querySelector('.CatalogBtn') || document.querySelector('[aria-label="目录"]');
         if (tocNode) {
             tocNode.classList.add('zh-toc-fixed-style');
