@@ -8,6 +8,7 @@
     const _translationMemoryCache = new Map();
     const _questionAnswerCache = new Map();
     const _homeFeedCache = new Map();
+    const _followFeedCache = new Map();
     const _shareImageDataUrlCache = new Map();
     const QUESTION_CACHE_DB = 'zh-immersive-question-cache';
     const QUESTION_CACHE_STORE = 'questionAnswers';
@@ -15,6 +16,8 @@
     const WIKI_HISTORY_MAX = 12;
     const HOME_BATCH_SIZE = 6;
     const HOME_RECOMMEND_API = 'https://www.zhihu.com/api/v3/feed/topstory/recommend';
+    const FOLLOW_BATCH_SIZE = 8;
+    const FOLLOW_MOMENTS_API = 'https://www.zhihu.com/api/v3/moments';
     const TRANSLATION_CACHE_KEY = 'zh-immersive-translation-cache-v1';
     const TRANSLATION_CACHE_MAX = 800;
     const EXPRESSION_BOOK_KEY = 'zh-immersive-expression-book-v1';
@@ -87,6 +90,20 @@
         groups: [],
         originalScrollY: 0,
         exitScrollY: 0,
+        currentIndex: 0,
+        currentGroupIndex: 0,
+        currentIndexInGroup: 0,
+        view: '',
+        collecting: false,
+        loadingMore: false,
+        exhausted: false,
+        apiNextUrl: '',
+        apiStarted: false
+    };
+
+    let _followState = {
+        items: [],
+        groups: [],
         currentIndex: 0,
         currentGroupIndex: 0,
         currentIndexInGroup: 0,

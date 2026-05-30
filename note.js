@@ -8,6 +8,8 @@
 // @supportURL   https://github.com/connectedGraph/zhihu-immersive-reader/issues
 // @match        *://zhihu.com/
 // @match        *://www.zhihu.com/
+// @match        *://zhihu.com/follow
+// @match        *://www.zhihu.com/follow
 // @match        *://*.zhihu.com/question/*
 // @match        *://zhuanlan.zhihu.com/p/*
 // @match        *://*.zhuanlan.zhihu.com/p/*

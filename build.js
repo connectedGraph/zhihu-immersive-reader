@@ -37,6 +37,7 @@ const modules = [
     'page-post.js',      // 专栏文章页逻辑
     'page-question.js',  // 问题页逻辑
     'page-home.js',      // 首页推荐逻辑
+    'page-follow.js',    // 关注动态页逻辑（纯 API）
     'wiki-store.js',     // Wiki IndexedDB 存储
     'wiki.js',           // Wiki 功能
     'toolbar.js',        // 工具栏 & 沉浸模式进入/退出

@@ -8,6 +8,9 @@ const STYLE_CSS = `
     #immersive-wrapper pre {background-color: var(--zh-code) !important;font-family: Consolas, monospace !important;font-size: inherit !important;padding: 1em 1.2em !important;border-radius: 6px !important;overflow-x: auto !important;line-height: 1.5 !important;}#immersive-wrapper pre code {background-color: transparent !important;padding: 0 !important;font-family: inherit !important;font-size: inherit !important;}#immersive-wrapper code:not(pre code) {background-color: var(--zh-code) !important;font-family: Consolas, monospace !important;font-size: inherit !important;padding: 0.2em 0.4em !important;border-radius: 3px !important;}
     #immersive-wrapper img { border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 100%; height: auto; cursor: zoom-out; }
     #immersive-wrapper img.zh-img-hidden { display: none !important; }
+    /* 主动隐藏图片时，收缩 zhihu 懒加载图外层容器预留的空白高度（保留占位 chip） */
+    #immersive-wrapper figure:has(> img.zh-img-hidden), #immersive-wrapper figure:has(> img.zh-img-hidden:only-child) { min-height: 0 !important; height: auto !important; margin: 8px 0 !important; }
+    #immersive-wrapper figure:has(img.zh-img-hidden) > div, #immersive-wrapper span:has(> img.zh-img-hidden) { min-height: 0 !important; height: auto !important; padding-bottom: 0 !important; }
     .zh-img-placeholder { min-height: 32px; margin: 8px 0; padding: 6px 12px; border: 1px dashed var(--zh-border); border-radius: 4px; background: var(--zh-quote); color: var(--zh-text); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; opacity: 0.7; font-size: 13px; transition: all 0.2s ease; }
     .zh-img-placeholder:hover { border-color: var(--zh-accent); color: var(--zh-accent); opacity: 1; }
     .zh-img-placeholder svg { flex-shrink: 0; stroke: currentColor; }
@@ -34,6 +37,15 @@ const STYLE_CSS = `
     .zh-answer-list-meta { color: var(--zh-accent); font-size: 0.9em; margin-bottom: 6px; }
     .zh-answer-list-snippet { line-height: 1.7; }
     .zh-home-title { margin: 0 0 14px !important; padding-bottom: 12px !important; border-bottom: 2px solid var(--zh-accent) !important; font-size: 26px !important; line-height: 1.4 !important; letter-spacing: 0 !important; }
+
+    /* 首页/关注 切换头：H1 与开关同行，右上角 */
+    .zh-feed-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 0 0 14px !important; padding-bottom: 12px; border-bottom: 2px solid var(--zh-accent); }
+    .zh-feed-head .zh-home-title { margin: 0 !important; padding-bottom: 0 !important; border-bottom: none !important; }
+    .zh-feed-switch { display: inline-flex; align-items: center; padding: 3px; border: 1px solid var(--zh-border); border-radius: 999px; background: var(--zh-quote); flex-shrink: 0; }
+    .zh-feed-switch-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 16px; border: none; border-radius: 999px; background: transparent; color: var(--zh-text); opacity: 0.7; cursor: pointer; font-family: inherit; font-size: 14px; line-height: 1.2; white-space: nowrap; transition: all 0.2s ease; }
+    .zh-feed-switch-btn:hover:not(.is-active) { opacity: 1; color: var(--zh-accent); }
+    .zh-feed-switch-btn.is-active { background: var(--zh-accent); color: #fff; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .zh-feed-switch-btn svg { width: 15px; height: 15px; }
 
     /* 首页宽屏工作台布局 */
     #immersive-wrapper.zh-home-wide { max-width: 1200px; padding: 24px 48px 40px; margin-top: -30px; border-left: none !important; border-right: none !important; box-shadow: none; background: transparent !important; }
@@ -63,6 +75,25 @@ const STYLE_CSS = `
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }
 
     @media (max-width: 860px) { .zh-home-grid { grid-template-columns: 1fr; } #immersive-wrapper.zh-home-wide { max-width: none; padding: 24px 16px; } }
+
+    /* 关注动态：推特式时间线 */
+    #immersive-wrapper.zh-follow-wide { max-width: 640px; padding: 24px 0 60px; margin-top: -30px; border-left: none !important; border-right: none !important; box-shadow: none; background: transparent !important; }
+    #immersive-wrapper.zh-follow-wide.zh-follow-double { max-width: 1100px; }
+    .zh-follow-timeline { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; animation: zh-page-enter 0.25s ease-out; }
+    .zh-follow-timeline.zh-follow-grid { display: grid; grid-template-columns: repeat(2, 1fr); align-items: stretch; }
+    .zh-follow-grid .zh-moment { height: 220px; display: flex; flex-direction: column; overflow: hidden; }
+    .zh-follow-grid .zh-moment-card { flex: 1; min-height: 0; }
+    .zh-follow-grid .zh-moment-snippet { -webkit-line-clamp: 5; }
+    .zh-moment { border: 1px solid var(--zh-border); border-radius: 12px; background: var(--zh-paper); padding: 16px 18px; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+    .zh-moment:hover { border-color: var(--zh-accent); box-shadow: 0 4px 18px rgba(0,0,0,0.07); }
+    .zh-moment-action { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--zh-accent); opacity: 0.9; margin-bottom: 10px; line-height: 1.4; }
+    .zh-moment-action img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .zh-moment-action b { color: var(--zh-title); font-weight: bold; }
+    .zh-moment-verb { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--zh-quote); color: var(--zh-accent); border: 1px solid var(--zh-border); white-space: nowrap; }
+    .zh-moment-card { border-left: 3px solid var(--zh-border); padding-left: 12px; }
+    .zh-moment-title { font-size: 16px; font-weight: bold; color: var(--zh-title); line-height: 1.5; margin: 0 0 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .zh-moment-snippet { font-size: 14px; color: var(--zh-text); opacity: 0.7; line-height: 1.7; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    @media (max-width: 700px) { #immersive-wrapper.zh-follow-wide { max-width: none; padding: 24px 12px 60px; } .zh-follow-timeline.zh-follow-grid { grid-template-columns: 1fr; } }
 
     /* 页面切换动画 */
     @keyframes zh-page-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

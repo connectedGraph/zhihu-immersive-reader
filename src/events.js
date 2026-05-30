@@ -26,6 +26,19 @@
             }
         }
 
+        if (window._isImmersive && _followState.view === 'item' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (key === 'j' || key === 'arrowright') {
+                e.preventDefault();
+                navigateFollowItem(1);
+                return;
+            }
+            if (key === 'k' || key === 'arrowleft') {
+                e.preventDefault();
+                navigateFollowItem(-1);
+                return;
+            }
+        }
+
         if (window._isImmersive && _questionState.view === 'answer' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (key === 'j' || key === 'arrowright') {
                 e.preventDefault();

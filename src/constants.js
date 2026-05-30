@@ -10,7 +10,21 @@ const THEMES = [
     { name: '🎋 竹简', vars: { '--zh-bg': '#D6E4D0', '--zh-paper': '#EDF5EA', '--zh-text': '#2C3E2E', '--zh-title': '#1B2A1E', '--zh-accent': '#3D7A4A', '--zh-border': '#B3CCAF', '--zh-quote': '#DDE9DA', '--zh-code': '#D4E2D0', '--zh-modal-bg': '#EDF5EA' } },
     { name: '🧳 牛皮', vars: { '--zh-bg': '#D4C4A8', '--zh-paper': '#F5EBDA', '--zh-text': '#3D2E1C', '--zh-title': '#2A1A08', '--zh-accent': '#8B5E34', '--zh-border': '#C9B896', '--zh-quote': '#EDE3D1', '--zh-code': '#E8DCCA', '--zh-modal-bg': '#F5EBDA' } },
     { name: '🧛 暗血', vars: { '--zh-bg': '#0F0F0F', '--zh-paper': '#1A1A1A', '--zh-text': '#C8C8C8', '--zh-title': '#E0E0E0', '--zh-accent': '#C0392B', '--zh-border': '#2E2E2E', '--zh-quote': '#222222', '--zh-code': '#161616', '--zh-modal-bg': '#242424' } },
-    { name: '⚪ 简白', vars: { '--zh-bg': '#F0F2F5', '--zh-paper': '#FFFFFF', '--zh-text': '#1F2937', '--zh-title': '#111827', '--zh-accent': '#2563EB', '--zh-border': '#E5E7EB', '--zh-quote': '#F8FAFC', '--zh-code': '#F3F4F6', '--zh-modal-bg': '#FFFFFF' } }
+    { name: '⚪ 简白', vars: { '--zh-bg': '#F5F5F5', '--zh-paper': '#FFFFFF', '--zh-text': '#333333', '--zh-title': '#000000', '--zh-accent': '#0066CC', '--zh-border': '#E0E0E0', '--zh-quote': '#F8F8F8', '--zh-code': '#F5F5F5', '--zh-modal-bg': '#FFFFFF' } }
+];
+
+// 自定义主题：localStorage 键 + 各 CSS 变量对应 UI 部位的中文指引
+const CUSTOM_THEMES_KEY = 'zh-immersive-custom-themes-v1';
+const THEME_VAR_GUIDE = [
+    { key: '--zh-bg', label: '页面背景', desc: '整个页面最外层的底色', def: '#E5DEC9' },
+    { key: '--zh-paper', label: '卡片/纸张', desc: '文章正文、卡片、弹窗的纸面色', def: '#F8F4E6' },
+    { key: '--zh-text', label: '正文文字', desc: '正文与大部分文本颜色', def: '#2b2b2b' },
+    { key: '--zh-title', label: '标题文字', desc: '大标题 H1/H2 与加粗标题色', def: '#1a1a1a' },
+    { key: '--zh-accent', label: '强调色', desc: '主色：边框线、按钮高亮、激活态、链接', def: '#8B2626' },
+    { key: '--zh-border', label: '边框/分隔线', desc: '卡片边框、虚线分隔线', def: '#d4cbb8' },
+    { key: '--zh-quote', label: '引用/浅底块', desc: '引用块、开关轨道、浅色背景块', def: '#f0ebe1' },
+    { key: '--zh-code', label: '代码块底色', desc: '代码块 / Wiki 输出区底色', def: '#eae5d9' },
+    { key: '--zh-modal-bg', label: '弹窗背景', desc: '设置等模态弹窗的背景色', def: '#F8F4E6' }
 ];
 
 // ----- 默认配置 -----

@@ -175,7 +175,7 @@
 
 
     window.toggleImmersiveMode = function() {
-        if (_questionState.collecting || _homeState.collecting) return;
+        if (_questionState.collecting || _homeState.collecting || _followState.collecting) return;
         if (window._isImmersive) exitImmersive();
         else enterImmersive();
     };
@@ -183,6 +183,10 @@
 function enterImmersive() {
         if (isHomePage()) {
             enterHomeImmersive();
+            return;
+        }
+        if (isFollowPage()) {
+            enterFollowImmersive();
             return;
         }
         if (isQuestionPage()) {
@@ -193,7 +197,7 @@ function enterImmersive() {
             enterPostImmersive();
             return;
         }
-        alert('阁下，此通用版目前只适配知乎首页、question 页面和 zhuanlan /p/ 页面。');
+        alert('阁下，此通用版目前只适配知乎首页、关注动态页 (/follow)、question 页面和 zhuanlan /p/ 页面。');
     }
 
     function exitImmersive() {

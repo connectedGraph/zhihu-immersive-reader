@@ -96,6 +96,32 @@ const SETTINGS_MODAL_HTML = (cfg) => `
         <div style="font-size:12px; opacity:.7; margin-top:6px;">点击列表中的收藏夹即可填入 ID。需登录知乎账号后操作。</div>
     </div>
 
+    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
+        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:6px;">自定义主题（上传配色）</div>
+        <div style="font-size:12px; opacity:.75; margin-bottom:10px; line-height:1.6;">为每个颜色选择色值，下方括号说明该颜色对应界面的哪个部位。命名后点「添加主题」即可保存到本地，随取色按钮循环切换。</div>
+        <div id="zh-theme-var-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:12px;">
+            ${THEME_VAR_GUIDE.map(v => `
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                    <input type="color" class="zh-theme-var" data-var="${v.key}" value="${v.def}" style="width:34px; height:28px; padding:0; border:1px solid var(--zh-border); border-radius:4px; background:none; cursor:pointer; flex-shrink:0;">
+                    <span style="min-width:0;"><b>${v.label}</b><br><span style="opacity:.65; font-size:11px;">${v.desc}</span></span>
+                </label>
+            `).join('')}
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <input type="text" id="zh-theme-name" placeholder="主题名，如 🌙 夜读" style="flex:1; min-width:140px; box-sizing:border-box;">
+            <button id="zh-add-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px;">添加主题</button>
+        </div>
+        <details style="margin-bottom:8px;">
+            <summary style="cursor:pointer; font-size:13px; color:var(--zh-accent);">或粘贴 JSON 主题对象导入</summary>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin:6px 0;">
+                <button id="zh-theme-tutorial-btn" type="button" class="zh-inline-btn" style="padding:5px 10px; font-size:12px;">查看模板与字段说明</button>
+            </div>
+            <textarea id="zh-theme-json" rows="4" placeholder="在此粘贴主题 JSON 对象（点上方按钮查看模板与字段说明）" style="width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12px;"></textarea>
+            <button id="zh-import-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px; margin-top:6px;">导入 JSON 主题</button>
+        </details>
+        <div id="zh-custom-theme-list" style="font-size:13px; line-height:1.7;"></div>
+    </div>
+
     <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
 `;
 

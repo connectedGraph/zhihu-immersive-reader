@@ -1,4 +1,51 @@
     const THEME_STORAGE_KEY = 'zh-immersive-theme-index';
+
+    // 启动时把用户自定义主题追加进 THEMES（mutate，不重新赋值 const）
+    function loadCustomThemes() {
+        try {
+            const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(list)) {
+                list.forEach(t => {
+                    if (t && t.name && t.vars && !THEMES.some(x => x.name === t.name)) THEMES.push(t);
+                });
+            }
+        } catch (e) {}
+    }
+    loadCustomThemes();
+
+    function saveCustomThemes() {
+        const custom = THEMES.filter(t => t.custom);
+        try { localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(custom)); } catch (e) {}
+    }
+
+    function addCustomTheme(name, vars) {
+        const theme = { name, vars, custom: true };
+        THEMES.push(theme);
+        saveCustomThemes();
+        return THEMES.length - 1;
+    }
+
+    // 容错解析主题对象：先严格 JSON，失败再把单引号/无引号 key normalize 后重试
+    function parseThemeJSON(raw) {
+        const text = String(raw).trim().replace(/;$/, '');
+        try { return JSON.parse(text); } catch (e) {}
+        try {
+            const normalized = text
+                .replace(/'/g, '"')
+                .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
+                .replace(/,\s*([}\]])/g, '$1');
+            return JSON.parse(normalized);
+        } catch (e) { return null; }
+    }
+
+    function removeCustomTheme(name) {
+        const idx = THEMES.findIndex(t => t.custom && t.name === name);        if (idx < 0) return;
+        THEMES.splice(idx, 1);
+        saveCustomThemes();
+        if (currentThemeIndex >= THEMES.length) applyTheme(0);
+    }
+
     let currentThemeIndex = (() => {
         try {
             if (typeof GM_getValue === 'function') {
@@ -73,6 +120,7 @@
             '[class*="avatar"]',
             '.zh-answer-list-meta',
             '.zh-home-card-meta',
+            '.zh-moment-action',
             '.zh-home-api-item .AuthorInfo',
             '.Reward',
             '.ContentItem-actions',
@@ -384,6 +432,69 @@ function S2translate(id, title, innerHTML) {
             }
         });
 
+        // 自定义主题：渲染已有列表 + 添加/删除
+        function renderCustomThemeList() {
+            const box = document.getElementById('zh-custom-theme-list');
+            if (!box) return;
+            const customs = THEMES.filter(t => t.custom);
+            box.innerHTML = customs.length
+                ? customs.map(t => `
+                    <div class="zh-custom-theme-row" data-name="${escapeHTML(t.name)}" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--zh-border); border-radius:4px; margin-bottom:4px; background:var(--zh-quote);">
+                        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHTML(t.name)}</span>
+                        <span style="display:inline-flex; gap:3px;">${THEME_VAR_GUIDE.slice(0,5).map(v => `<span style="width:14px;height:14px;border-radius:3px;border:1px solid var(--zh-border);background:${escapeHTML(t.vars[v.key] || '#000')};"></span>`).join('')}</span>
+                        <button type="button" class="zh-inline-btn zh-apply-theme" style="padding:3px 8px; font-size:12px;">应用</button>
+                        <button type="button" class="zh-inline-btn zh-del-theme" style="padding:3px 8px; font-size:12px;">删除</button>
+                    </div>
+                `).join('')
+                : '<div style="opacity:.6;">还没有自定义主题。</div>';
+            box.querySelectorAll('.zh-custom-theme-row').forEach(row => {
+                const name = row.getAttribute('data-name');
+                row.querySelector('.zh-apply-theme').addEventListener('click', () => {
+                    applyTheme(THEMES.findIndex(t => t.name === name));
+                    showToast(`已应用主题「${name}」`);
+                });
+                row.querySelector('.zh-del-theme').addEventListener('click', () => {
+                    removeCustomTheme(name);
+                    renderCustomThemeList();
+                    showToast('已删除主题');
+                });
+            });
+        }
+        renderCustomThemeList();
+
+        document.getElementById('zh-add-theme-btn').addEventListener('click', () => {
+            const name = (document.getElementById('zh-theme-name').value || '').trim();
+            if (!name) { showToast('请先填写主题名'); return; }
+            if (THEMES.some(t => t.name === name)) { showToast('已存在同名主题'); return; }
+            const vars = {};
+            document.querySelectorAll('#zh-theme-var-grid .zh-theme-var').forEach(inp => {
+                vars[inp.getAttribute('data-var')] = inp.value;
+            });
+            const idx = addCustomTheme(name, vars);
+            applyTheme(idx);
+            document.getElementById('zh-theme-name').value = '';
+            renderCustomThemeList();
+            showToast(`已添加并应用「${name}」`);
+        });
+
+        document.getElementById('zh-theme-tutorial-btn').addEventListener('click', showThemeTutorialModal);
+
+        document.getElementById('zh-import-theme-btn').addEventListener('click', () => {
+            const raw = (document.getElementById('zh-theme-json').value || '').trim();
+            if (!raw) { showToast('请先粘贴 JSON'); return; }
+            const obj = parseThemeJSON(raw);
+            if (!obj || !obj.name || !obj.vars || typeof obj.vars !== 'object') { showToast('JSON 格式不对，需含 name 和 vars'); return; }
+            const name = String(obj.name).trim();
+            if (THEMES.some(t => t.name === name)) { showToast('已存在同名主题'); return; }
+            const vars = {};
+            THEME_VAR_GUIDE.forEach(v => { vars[v.key] = obj.vars[v.key] || v.def; });
+            const idx = addCustomTheme(name, vars);
+            applyTheme(idx);
+            document.getElementById('zh-theme-json').value = '';
+            renderCustomThemeList();
+            showToast(`已导入并应用「${name}」`);
+        });
+
         // 保存配置按钮
         document.getElementById('zh-save-settings-btn').addEventListener('click', () => {
             saveConfig(readSettingsFromForm());
@@ -391,6 +502,30 @@ function S2translate(id, title, innerHTML) {
             initialSnapshot = getFormSnapshot();
             closeSettingsModal();
             showToast('设置已保存');
+        });
+    }
+
+    function showThemeTutorialModal() {
+        if (document.getElementById('zh-theme-tutorial-modal')) return;
+        const template = JSON.stringify({
+            name: '🌙 我的主题',
+            vars: Object.fromEntries(THEME_VAR_GUIDE.map(v => [v.key, v.def]))
+        }, null, 2);
+        const rows = THEME_VAR_GUIDE.map(v => `
+            <div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px dashed var(--zh-border);">
+                <code style="color:var(--zh-accent); flex-shrink:0; width:120px;">${escapeHTML(v.key)}</code>
+                <span><b>${escapeHTML(v.label)}</b> — ${escapeHTML(v.desc)}</span>
+            </div>
+        `).join('');
+        createModal('zh-theme-tutorial-modal', '🎨 主题模板与字段说明', `
+            <div style="font-size:13px; line-height:1.7; margin-bottom:12px;">复制下面的模板，把每个颜色改成你想要的值（支持 #RRGGBB），再粘回导入框点「导入 JSON 主题」。单引号、无引号 key 也能识别。</div>
+            <pre style="background:var(--zh-code); border:1px solid var(--zh-border); border-radius:4px; padding:12px; font-size:12px; overflow:auto; max-height:240px; margin:0 0 8px;"><code>${escapeHTML(template)}</code></pre>
+            <button id="zh-copy-theme-template" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px; margin-bottom:16px;">一键复制模板</button>
+            <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:6px;">字段说明</div>
+            <div style="font-size:13px;">${rows}</div>
+        `);
+        document.getElementById('zh-copy-theme-template').addEventListener('click', () => {
+            navigator.clipboard.writeText(template).then(() => showToast('模板已复制')).catch(() => showToast('复制失败'));
         });
     }
 

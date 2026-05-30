@@ -33,6 +33,11 @@
         return host === 'zhihu.com' && location.pathname === '/';
     }
 
+    function isFollowPage() {
+        const host = location.hostname.replace(/^www\./, '');
+        return host === 'zhihu.com' && /^\/follow\/?$/.test(location.pathname);
+    }
+
     function isPostPage() {
         return /\/p\/[^/]+/.test(location.pathname);
     }

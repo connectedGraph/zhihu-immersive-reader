@@ -534,10 +534,10 @@
         restoreLiveMount();
         clearHomeTranslations();
         syncHomeItemsFromGroups();
-        wrapper.classList.remove('zh-has-top-nav');
+        wrapper.classList.remove('zh-has-top-nav', 'zh-follow-wide', 'zh-follow-double');
         wrapper.classList.add('zh-home-wide');
         wrapper.innerHTML = '';
-        appendHomeHeader(wrapper);
+        appendFeedSwitchHeader(wrapper, 'home');
         renderHomeGroupToolbar(wrapper);
 
         const group = getCurrentHomeGroup();
