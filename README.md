@@ -6,9 +6,10 @@
 
 适配页面：知乎首页推荐流(zhihu.com)、关注动态页 (`/follow`)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
 
-- feature image:[点击查看脚本演示](https://zhuanlan.zhihu.com/p/2039743943340991262)
-[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-green.svg)](https://greasyfork.org/zh-CN/scripts/573678)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Demo](https://img.shields.io/badge/演示-脚本视频演示-FF69B4?style=for-the-badge&logo=youtube&logoColor=white)](https://zhuanlan.zhihu.com/p/2039743943340991262)
+[![Landing Page](https://img.shields.io/badge/官网-Landing%20页-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://6767.chat/zhihu-immersive-reader/)
+[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-4BBA64?style=for-the-badge&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/573678)
+[![License](https://img.shields.io/badge/license-MIT-007EC6?style=for-the-badge)](LICENSE)
 ---
 
 ## 功能概览
@@ -140,6 +141,15 @@ node build.js
 ---
 
 ## 更新日志
+
+### 2026-06-07 · v5.0.0
+
+- **feat**: 新增 **个人空间** 功能，集成阅读打卡热力图、阅读记录历史与 Wiki 任务工作台
+- **feat**: 引入 **阅读历史与进度追踪**，基于 IndexedDB 自动记录阅读历史并实时更新滚动进度百分比（支持标记“✓ 读完”）
+- **feat**: 优化 **Wiki 学习卡片生成 Pipeline**，系统 Prompt 大幅精简 57% 以减少 token 消耗，新增 `credibilityNotes`（可信度说明）与 `personalReflection`（个人反思）字段，并新增“综述”内容分类
+- **feat**: 安全升级 Embedding 模型切换逻辑，当变更向量模型时提醒用户清理或重建旧向量，防止不同模型向量不兼容导致语义搜索失效
+- **feat**: 阅读笔记 (Radar) 全面支持关注动态正文生成，并加强了生成界面的条件校验，防止非正文页 URL 记录污染
+- **opt**: 自动拦截并过滤知乎官方失效的 HTTPDNS 跨域请求，保持开发者控制台的整洁
 
 ### 2026-05-31 · v4.3.2
 

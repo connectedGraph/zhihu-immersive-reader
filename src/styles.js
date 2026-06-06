@@ -25,10 +25,10 @@ const STYLE_CSS = `
     .zh-question-detail-body { padding: 0 0 16px; }
     .zh-question-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 28px; }
     .zh-reader-top-nav { position: absolute; top: 18px; right: 18px; z-index: 3; max-width: 270px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; margin: 0 !important; padding: 6px 7px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); box-shadow: 0 4px 14px rgba(0,0,0,0.08); font-size: 12px; line-height: 1.2; opacity: 0.94; }
-    .zh-reader-top-nav .zh-inline-btn { padding: 4px 7px; font-size: 12px; line-height: 1.2; }
+    .zh-reader-top-nav .zh-inline-btn { height: 24px; padding: 0 8px; font-size: 12px; line-height: 1.2; display: inline-flex; align-items: center; justify-content: center; }
     .zh-reader-top-nav .zh-nav-current { display: inline-flex; align-items: center; color: var(--zh-accent); font-weight: bold; padding: 4px 2px; white-space: nowrap; }
     .zh-has-top-nav .zh-question-title, .zh-has-top-nav .zh-home-title { padding-right: 290px !important; }
-    .zh-inline-btn { padding: 8px 12px; border: 1px solid var(--zh-accent); border-radius: 4px; background: var(--zh-paper); color: var(--zh-accent); cursor: pointer; font-family: inherit; font-size: 15px; }
+    .zh-inline-btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border: 1px solid var(--zh-accent); border-radius: 4px; background: var(--zh-paper); color: var(--zh-accent); cursor: pointer; font-family: inherit; font-size: 14px; box-sizing: border-box; transition: all 0.15s ease; outline: none; }
     .zh-inline-btn:hover { background: var(--zh-accent); color: var(--zh-paper); }
     .zh-collect-status { margin: 24px 0; padding: 14px 18px; border-left: 4px solid var(--zh-accent); background: var(--zh-quote); color: var(--zh-text); }
     .zh-answer-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
@@ -142,7 +142,61 @@ const STYLE_CSS = `
     .zh-wiki-card-grid .zh-wiki-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .zh-wiki-card-grid .zh-wiki-card-tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--zh-quote); color: var(--zh-accent); border: 1px solid var(--zh-border); }
     .zh-wiki-card-grid .zh-wiki-card-type-badge { position: absolute; top: 12px; right: 14px; font-size: 11px; padding: 2px 8px; border-radius: 3px; background: var(--zh-accent); color: var(--zh-paper); opacity: 0.85; }
+    
+    /* Wiki 卡片详情模态框样式 */
+    .zh-wiki-detail-modal { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: var(--zh-text); padding: 5px 10px; }
+    .zh-wiki-detail-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .zh-wiki-detail-type { font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 4px; background: var(--zh-accent); color: var(--zh-paper); }
+    .zh-wiki-detail-date { font-size: 12px; opacity: 0.6; }
+    .zh-wiki-detail-title { font-size: 20px; font-weight: bold; color: var(--zh-title); margin: 0 0 10px 0; line-height: 1.4; }
+    .zh-wiki-detail-title a { color: inherit !important; text-decoration: none !important; border-bottom: none !important; display: inline-flex; align-items: center; gap: 4px; }
+    .zh-wiki-detail-title a:hover { color: var(--zh-accent) !important; }
+    .zh-wiki-detail-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+    .zh-wiki-detail-tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; background: var(--zh-quote); color: var(--zh-accent); border: 1px solid var(--zh-border); }
+    .zh-wiki-detail-hr { border: none; border-top: 1px dashed var(--zh-border); margin: 16px 0; }
+    .zh-wiki-detail-section { margin-bottom: 18px; }
+    .zh-wiki-detail-section-title { font-size: 13px; font-weight: bold; color: var(--zh-accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .zh-wiki-detail-section-title::before { content: ''; display: inline-block; width: 4px; height: 12px; background: var(--zh-accent); border-radius: 2px; }
+    .zh-wiki-detail-one-sentence { font-size: 15px; font-weight: 500; color: var(--zh-title); background: var(--zh-quote); border-left: 3px solid var(--zh-accent); padding: 8px 12px; border-radius: 0 4px 4px 0; }
+    .zh-wiki-detail-list { margin: 0; padding-left: 20px; }
+    .zh-wiki-detail-list li { font-size: 14px; margin-bottom: 6px; color: var(--zh-text); }
+    .zh-wiki-detail-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--zh-border); }
+    .zh-wiki-detail-meta-box { display: flex; flex-direction: column; gap: 6px; }
+    .zh-wiki-detail-credibility-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; }
+    .zh-wiki-detail-credibility-level { font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap; display: inline-block; }
+    .zh-wiki-detail-credibility-level.high { background: #e2f9e9; color: #1e7e34; }
+    .zh-wiki-detail-credibility-level.medium { background: #fff3cd; color: #856404; }
+    .zh-wiki-detail-credibility-level.low { background: #f8d7da; color: #721c24; }
+    .zh-wiki-detail-credibility-level.verify { background: #e2f0d9; color: #385723; }
+    .zh-wiki-detail-credibility-notes { font-size: 13px; color: var(--zh-text); opacity: 0.85; line-height: 1.45; }
+    .zh-wiki-detail-reflection { font-size: 13px; color: var(--zh-text); background: var(--zh-quote); padding: 8px 12px; border-radius: 4px; border: 1px dashed var(--zh-border); font-style: italic; line-height: 1.45; }
+    .zh-wiki-detail-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--zh-border); }
+    .zh-wiki-detail-btn-delete { padding: 6px 12px; border: 1px solid #dc3545; border-radius: 4px; background: transparent; color: #dc3545; cursor: pointer; font-family: inherit; font-size: 13px; transition: all 0.15s ease; outline: none; }
+    .zh-wiki-detail-btn-delete:hover { background: #dc3545; color: #fff; }
+    .zh-wiki-detail-btn-primary { padding: 6px 16px; border: 1px solid var(--zh-accent); border-radius: 4px; background: var(--zh-accent); color: var(--zh-paper); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: bold; transition: all 0.15s ease; outline: none; }
+    .zh-wiki-detail-btn-primary:hover { opacity: 0.9; }
+
+    /* Obsidian Callouts 网页渲染样式 */
+    .zh-callout { margin: 16px 0; border: 1px solid var(--zh-border); border-left: 4px solid var(--zh-accent); border-radius: 4px; background: var(--zh-quote); overflow: hidden; font-family: inherit; }
+    .zh-callout-title { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-weight: bold; background: rgba(0,0,0,0.03); color: var(--zh-title); border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 14px; }
+    .zh-callout-icon { font-size: 16px; display: inline-flex; align-items: center; }
+    .zh-callout-content { padding: 12px 14px; font-size: 14px; color: var(--zh-text); }
+    .zh-callout-content p { margin: 0 0 8px 0; }
+    .zh-callout-content p:last-child { margin-bottom: 0; }
+    .zh-callout-content li { margin-left: 14px; margin-bottom: 4px; list-style-type: disc; }
+    
+    /* Callout 变体配色 */
+    .zh-callout-info { border-left-color: #007acc; }
+    .zh-callout-summary { border-left-color: #2e8b57; }
+    .zh-callout-todo { border-left-color: #7a5cd8; }
+    .zh-callout-example { border-left-color: #a855f7; }
+    .zh-callout-tip { border-left-color: #eab308; }
+    .zh-callout-brain { border-left-color: #a16207; }
+    .zh-callout-warning { border-left-color: #ea580c; }
+    .zh-callout-quote { border-left-color: #64748b; }
+
     @media (max-width: 860px) { .zh-wiki-card-grid { grid-template-columns: 1fr; } }
+
     .zh-question-answer-view .Reward, .zh-question-answer-view .FollowButton { display: none !important; }
     .zh-question-answer-view .RichContent { line-height: inherit !important; }
     #immersive-wrapper img.Avatar, #immersive-wrapper .Avatar img, #immersive-wrapper .AuthorInfo-avatarWrapper img, #immersive-wrapper .zh-answer-list-meta img { width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important; max-width: 36px !important; max-height: 36px !important; aspect-ratio: 1 / 1 !important; object-fit: cover !important; border-radius: 5px !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; }
@@ -341,6 +395,156 @@ const STYLE_CSS = `
         .zh-reader-top-nav { position: static; max-width: none; justify-content: flex-start; margin: 8px 0 18px !important; }
         .zh-has-top-nav .zh-question-title, .zh-has-top-nav .zh-home-title { padding-right: 0 !important; }
     }
-        
-        
+
+    /* 个人空间布局 */
+    .zh-space-layout { display: flex; gap: 20px; margin-top: 20px; min-height: 70vh; }
+    .zh-space-sidebar { width: 180px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; border-right: 1px dashed var(--zh-border); padding-right: 16px; }
+    .zh-space-sidebar-title { font-weight: bold; color: var(--zh-accent); font-size: 16px; padding: 10px 12px 14px; border-bottom: 2px solid var(--zh-accent); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .zh-space-tab-btn { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: none; border-radius: 6px; background: transparent; color: var(--zh-text); cursor: pointer; text-align: left; font-family: inherit; font-size: 14px; transition: all 0.15s ease; outline: none; }
+    .zh-space-tab-btn:hover { background: var(--zh-quote); color: var(--zh-accent); }
+    .zh-space-tab-btn.is-active { background: var(--zh-accent); color: var(--zh-paper); font-weight: bold; }
+    .zh-space-tab-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; flex-shrink: 0; }
+    .zh-space-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    
+    /* 统计面板 */
+    .zh-space-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .zh-space-stat-card { border: 1px solid var(--zh-border); border-radius: 8px; padding: 16px; background: var(--zh-paper); box-shadow: 0 2px 8px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 6px; text-align: center; }
+    .zh-space-stat-val { font-size: 26px; font-weight: bold; color: var(--zh-accent); }
+    .zh-space-stat-lbl { font-size: 12px; opacity: 0.65; }
+    
+    /* 打卡与热力图 */
+    .zh-space-heatmap-wrapper { overflow-x: auto; padding: 16px; background: var(--zh-quote); border: 1px solid var(--zh-border); border-radius: 8px; margin: 16px 0 24px; position: relative; }
+    .zh-space-heatmap-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 13px; font-weight: bold; color: var(--zh-title); }
+    .zh-space-heatmap-grid-container { display: flex; gap: 8px; align-items: flex-start; }
+    .zh-space-heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; font-size: 9px; opacity: 0.5; width: 14px; text-align: center; margin-top: 0; }
+    .zh-space-heatmap-grid { display: grid; grid-template-rows: repeat(7, 10px); grid-auto-flow: column; grid-auto-columns: 10px; gap: 3px; }
+    .zh-space-heatmap-day { width: 10px; height: 10px; border-radius: 2px; background: rgba(0,0,0,0.06); cursor: pointer; position: relative; }
+    .zh-space-heatmap-day:hover { transform: scale(1.3); z-index: 3; box-shadow: 0 0 4px rgba(0,0,0,0.3); }
+    .zh-space-heatmap-day.level-1 { background: rgba(122, 92, 216, 0.2); }
+    .zh-space-heatmap-day.level-2 { background: rgba(122, 92, 216, 0.45); }
+    .zh-space-heatmap-day.level-3 { background: rgba(122, 92, 216, 0.7); }
+    .zh-space-heatmap-day.level-4 { background: var(--zh-accent); }
+    .zh-space-heatmap-months { display: grid; grid-template-columns: repeat(53, 10px); gap: 3px; font-size: 9px; opacity: 0.5; margin-left: 22px; margin-bottom: 6px; height: 12px; line-height: 12px; }
+
+    /* 表单与列表表格 */
+    .zh-space-table-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+    .zh-space-table-wrap { border: 1px solid var(--zh-border); border-radius: 6px; overflow: hidden; background: var(--zh-paper); margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+    .zh-space-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+    .zh-space-table th { background: var(--zh-quote); padding: 12px 14px; font-weight: bold; border-bottom: 1px solid var(--zh-border); color: var(--zh-title); vertical-align: middle; }
+    .zh-space-table td { padding: 12px 14px; border-bottom: 1px solid var(--zh-border); line-height: 1.5; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; }
+    .zh-space-table tr:last-child td { border-bottom: none; }
+    .zh-space-table tr:hover td { background: rgba(0,0,0,0.02); }
+    .zh-space-badge { font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
+    .zh-space-badge.article { background: #e2f0d9; color: #385723; }
+    .zh-space-badge.answer { background: #e2f9e9; color: #1e7e34; }
+    .zh-space-badge.wiki-done { background: #fff3cd; color: #856404; }
+    .zh-space-badge.wiki-todo { background: #e8f4fd; color: #1d72b8; }
+
+    /* 锁定工具栏槽位支持 - 禁用按钮样式 */
+    .zh-square-btn.zh-btn-disabled {
+        opacity: 0.45 !important;
+        cursor: not-allowed !important;
+        border-color: var(--zh-border) !important;
+        color: var(--zh-text) !important;
+    }
+    .zh-square-btn.zh-btn-disabled:hover {
+        background-color: var(--zh-paper) !important;
+        color: var(--zh-text) !important;
+    }
+
+    /* 个人空间根容器卡片质感 & 动效 */
+    @keyframes zh-space-enter {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes zh-space-exit-anim {
+        from { opacity: 1; transform: translateY(0); }
+        to { opacity: 0; transform: translateY(18px); }
+    }
+    #zh-space-container {
+        background-color: var(--zh-paper);
+        border: 1px solid var(--zh-border);
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+        padding: 24px;
+        margin-top: 16px;
+        transition: all 0.3s ease;
+        animation: zh-space-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    #zh-space-container.zh-space-exit {
+        animation: zh-space-exit-anim 0.25s ease forwards;
+        pointer-events: none;
+    }
+    .zh-space-avatar {
+        transition: transform 0.25s ease, border-color 0.25s ease;
+    }
+    .zh-space-avatar:hover {
+        transform: scale(1.08) rotate(3deg);
+        border-color: var(--zh-accent) !important;
+    }
+
+    /* 模态弹窗的高级打开与关闭动画 */
+    @keyframes zh-modal-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes zh-modal-pop-in {
+        from { transform: scale(0.92) translateY(12px); opacity: 0; }
+        to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    @keyframes zh-modal-fade-out {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+    @keyframes zh-modal-pop-out {
+        from { transform: scale(1) translateY(0); opacity: 1; }
+        to { transform: scale(0.92) translateY(12px); opacity: 0; }
+    }
+    .zh-modal-overlay {
+        animation: zh-modal-fade-in 0.25s ease forwards;
+    }
+    .zh-modal {
+        animation: zh-modal-pop-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    .zh-modal-overlay.zh-modal-closing {
+        animation: zh-modal-fade-out 0.2s ease forwards;
+        pointer-events: none;
+    }
+    .zh-modal-overlay.zh-modal-closing .zh-modal {
+        animation: zh-modal-pop-out 0.2s ease forwards;
+    }
+
+    /* 响应式断点自适应排版：窄屏自动折叠侧边栏 */
+    @media (max-width: 900px) {
+        .zh-space-layout {
+            flex-direction: column !important;
+            gap: 16px !important;
+        }
+        .zh-space-sidebar {
+            width: 100% !important;
+            border-right: none !important;
+            border-bottom: 1px dashed var(--zh-border) !important;
+            padding-right: 0 !important;
+            padding-bottom: 16px !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+        }
+        .zh-space-sidebar-title {
+            width: 100% !important;
+            border-bottom: none !important;
+            margin-bottom: 4px !important;
+            padding: 6px 12px !important;
+        }
+        .zh-space-tab-btn {
+            flex: 1 1 auto !important;
+            justify-content: center !important;
+            padding: 8px 12px !important;
+            font-size: 13px !important;
+        }
+        .zh-space-tab-btn[style*="margin-top: auto"] {
+            margin-top: 0 !important;
+            width: 100% !important;
+        }
+    }
 `;

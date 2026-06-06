@@ -51,17 +51,29 @@
                 });
             });
         } else {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keyToUse}` },
-                body: payload
-            });
-            if (!res.ok) {
-                const errText = await res.text();
-                throw new Error(`HTTP ${res.status}: ${errText.substring(0, 300)}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keyToUse}` },
+                    body: payload,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`HTTP ${res.status}: ${errText.substring(0, 300)}`);
+                }
+                const data = await res.json();
+                return data.choices[0].message.content.trim();
+            } catch (err) {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    throw new Error("请求超时");
+                }
+                throw err;
             }
-            const data = await res.json();
-            return data.choices[0].message.content.trim();
         }
     }
 

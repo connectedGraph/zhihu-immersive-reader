@@ -230,10 +230,23 @@
         `;
         document.body.appendChild(overlay);
 
-        document.getElementById(`${id}-close-btn`).addEventListener('click', () => {
-            if (onClose) onClose();
-            else overlay.remove();
+        const closeWithAnim = () => {
+            overlay.classList.add('zh-modal-closing');
+            setTimeout(() => {
+                if (onClose) onClose();
+                else overlay.remove();
+            }, 200);
+        };
+
+        document.getElementById(`${id}-close-btn`).addEventListener('click', closeWithAnim);
+        
+        // 点击遮罩背景也可以关闭模态窗
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeWithAnim();
+            }
         });
+
         return overlay;
     }
 
@@ -301,10 +314,6 @@ function S2translate(id, title, innerHTML) {
             imageMode: imageMode === 'collapse' ? 'collapse' : 'preview',
             shareExportFormat: ['html', 'svg', 'png', 'webp'].includes(shareFormat) ? shareFormat : 'svg',
             answerPreviewMode: document.getElementById('zh-cfg-answer-preview').value,
-            wikiMaxItems: getFormNumber('zh-cfg-wiki-max', 100, 1),
-            wikiConcurrency: getFormNumber('zh-cfg-wiki-concurrency', 20, 0),
-            wikiRpm: getFormNumber('zh-cfg-wiki-rpm', 300, 0),
-            wikiFinalSynthesis: document.getElementById('zh-cfg-wiki-final').checked,
             embeddingHost: (document.getElementById('zh-cfg-embedding-host')?.value || '').trim(),
             embeddingModel: (document.getElementById('zh-cfg-embedding-model')?.value || '').trim() || 'text-embedding-3-small',
             embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim(),
@@ -343,13 +352,40 @@ function S2translate(id, title, innerHTML) {
             document.getElementById('zh-settings-modal')?.remove();
         }
 
+        async function commitSettingsSave(onDone) {
+            const next = readSettingsFromForm();
+            const prevModel = (config.embeddingModel || '').trim();
+            const nextModel = (next.embeddingModel || '').trim();
+            if (nextModel && prevModel && nextModel !== prevModel) {
+                let hasEmbeddings = false;
+                try {
+                    hasEmbeddings = (await getAllWikiCards()).some(c => c.embedding && c.embedding.length);
+                } catch (e) {}
+                if (hasEmbeddings) {
+                    const ok = window.confirm(`检测到 Embedding 模型从「${prevModel}」改为「${nextModel}」。\n\n不同模型生成的向量互不兼容，旧向量将无法用于语义搜索。\n\n点「确定」：清空全部已有向量（卡片正文保留），之后可重新跑 Embedding；\n点「取消」：保留旧向量，本次不更换模型。`);
+                    if (!ok) {
+                        next.embeddingModel = prevModel;
+                    } else {
+                        try {
+                            const cleared = await clearAllCardEmbeddings();
+                            showToast(`已清空 ${cleared} 条旧向量`);
+                        } catch (e) {
+                            alert('清空旧向量失败：' + e.message);
+                            return;
+                        }
+                    }
+                }
+            }
+            saveConfig(next);
+            if (window._isImmersive) setupImageToggles();
+            onDone?.();
+            showToast('设置已保存');
+        }
+
         function tryClose() {
             if (initialSnapshot && getFormSnapshot() !== initialSnapshot) {
                 showConfirm('设置有未保存的改动，是否保存？', () => {
-                    saveConfig(readSettingsFromForm());
-                    if (window._isImmersive) setupImageToggles();
-                    closeSettingsModal();
-                    showToast('设置已保存');
+                    commitSettingsSave(closeSettingsModal);
                 }, closeSettingsModal);
             } else {
                 closeSettingsModal();
@@ -497,11 +533,10 @@ function S2translate(id, title, innerHTML) {
 
         // 保存配置按钮
         document.getElementById('zh-save-settings-btn').addEventListener('click', () => {
-            saveConfig(readSettingsFromForm());
-            if (window._isImmersive) setupImageToggles();
-            initialSnapshot = getFormSnapshot();
-            closeSettingsModal();
-            showToast('设置已保存');
+            commitSettingsSave(() => {
+                initialSnapshot = getFormSnapshot();
+                closeSettingsModal();
+            });
         });
     }
 

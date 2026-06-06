@@ -314,22 +314,28 @@
         if (status) status.textContent = `正在加载后续 ${HOME_BATCH_SIZE} 个回答...`;
         const before = _questionState.answers.length;
         const keepScrollY = window.scrollY;
-        const batch = await collectMoreQuestionAnswers(HOME_BATCH_SIZE, status);
-        if (mode === 'answer') {
-            if (batch.length && _questionState.currentIndex < _questionState.answers.length - 1) {
-                renderQuestionAnswer(_questionState.currentIndex + 1, false);
-            } else {
-                renderQuestionAnswer(Math.min(_questionState.currentIndex, _questionState.answers.length - 1), false);
+        try {
+            const batch = await collectMoreQuestionAnswers(HOME_BATCH_SIZE, status);
+            if (mode === 'answer') {
+                if (batch.length && _questionState.currentIndex < _questionState.answers.length - 1) {
+                    renderQuestionAnswer(_questionState.currentIndex + 1, false);
+                } else {
+                    renderQuestionAnswer(Math.min(_questionState.currentIndex, _questionState.answers.length - 1), false);
+                }
+                return batch;
+            }
+            renderQuestionList();
+            requestAnimationFrame(() => window.scrollTo(0, keepScrollY));
+            if (!batch.length && before === _questionState.answers.length) {
+                const done = document.getElementById('zh-question-load-status');
+                if (done) done.textContent = '暂时没有加载到更多回答。';
             }
             return batch;
+        } catch (e) {
+            console.error('加载回答失败:', e);
+            if (status) status.textContent = `加载失败: ${e.message || '网络或数据错误'}`;
+            return [];
         }
-        renderQuestionList();
-        requestAnimationFrame(() => window.scrollTo(0, keepScrollY));
-        if (!batch.length && before === _questionState.answers.length) {
-            const done = document.getElementById('zh-question-load-status');
-            if (done) done.textContent = '暂时没有加载到更多回答。';
-        }
-        return batch;
     }
 
 
@@ -524,11 +530,47 @@
         return !!el?.closest('input, textarea, select, [contenteditable="true"]');
     }
 
+    function logAnswerReadingRecord(answer) {
+        if (!answer) return;
+        try {
+            let url = answer.key || '';
+            if (!url.startsWith('http')) {
+                const mainUrl = getMainQuestionUrl().replace(/[?#].*$/, '');
+                url = `${mainUrl}/answer/${answer.key}`;
+            }
+            
+            const questionTitle = getQuestionTitleText();
+            const title = `${questionTitle} - ${answer.author || '知乎用户'} 的回答`;
+            const author = answer.author || '知乎用户';
+            const contentKind = 'answer';
+            
+            addReadingRecord({
+                url,
+                title,
+                author,
+                contentKind,
+                readAt: new Date().toISOString(),
+                manuallyMarked: false,
+                wikiCardId: null,
+                duration: 0
+            }).then(() => {
+                console.log('沉浸式阅读：已成功自动保存回答历史', { url, title });
+            }).catch(e => {
+                console.warn('保存回答历史失败', e);
+            });
+        } catch (e) {
+            console.warn('记录回答历史错误', e);
+        }
+    }
+
     function renderQuestionAnswer(index = 0, showAllAnswersButton = false) {
         const wrapper = document.getElementById('immersive-wrapper');
         const safeIndex = setCurrentQuestionAnswer(index);
         const answer = _questionState.answers[safeIndex];
         if (!wrapper || !answer) return;
+
+        logAnswerReadingRecord(answer);
+
         _questionState.view = 'answer';
         clearQuestionTranslations();
         wrapper.classList.add('zh-has-top-nav');
@@ -617,6 +659,7 @@
                 window._isImmersive = true;
                 renderQuestionAnswer(0, true);
                 if (config.autoSum || config.autoTr) document.getElementById('zh-translate-btn')?.click();
+                logCurrentPageReadingRecord();
                 return;
             }
 
@@ -657,6 +700,7 @@
             createQuestionToolsPanel();
             window._isImmersive = true;
             renderQuestionList();
+            logCurrentPageReadingRecord();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;

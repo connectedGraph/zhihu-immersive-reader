@@ -81,12 +81,18 @@ archetype, oneliner, impression, depth, relevance, tags。`;
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) throw new Error('请先进入沉浸模式。');
 
-        if (_questionState.view === 'list' || _homeState.view === 'list') {
-            throw new Error('请先选择一篇内容进入正文，再生成阅读笔记。');
+        // 只在能定位到具体文章/回答/动态 URL 的正文视图下允许生成笔记，
+        // 个人空间、Wiki、未进入正文的推荐流/关注流列表等都禁止（否则会把页面 URL 错记为笔记来源）。
+        const inHomeItem = _homeState.view === 'item';
+        const inFollowItem = _followState.view === 'item';
+        const inAnswer = _questionState.view === 'answer' || isAnswerUrl();
+        const inPost = isPostPage() && _homeState.view !== 'item' && _followState.view === '' && _questionState.view !== 'answer';
+        if (!inHomeItem && !inFollowItem && !inAnswer && !inPost) {
+            throw new Error('请先打开一篇文章 / 回答 / 关注动态的正文，再生成阅读笔记。');
         }
 
         // 首页推荐流正文视图
-        if (_homeState.view === 'item') {
+        if (inHomeItem) {
             const homeItem = _homeState.items[_homeState.currentIndex];
             const root = document.querySelector('#immersive-wrapper .zh-home-card-view') || wrapper;
             const sourceText = normalizeText(root?.innerText || root?.textContent || '');
@@ -102,7 +108,25 @@ archetype, oneliner, impression, depth, relevance, tags。`;
             };
         }
 
-        const isAnswer = _questionState.view === 'answer' || isAnswerUrl();
+        // 关注动态正文视图
+        if (inFollowItem) {
+            const followItem = _followState.items[_followState.currentIndex];
+            const root = document.querySelector('#immersive-wrapper .zh-home-card-view, #immersive-wrapper .zh-follow-card-view') || wrapper;
+            const sourceText = normalizeText(followItem?.text || root?.innerText || root?.textContent || '');
+            if (!sourceText || sourceText.length < 20) throw new Error('当前内容太短，无法生成阅读笔记。');
+            const url = followItem?.url || followItem?.key;
+            if (!url) throw new Error('无法定位当前动态的链接，暂不能生成阅读笔记。');
+            const title = (followItem?.title || document.querySelector('#immersive-wrapper h1, h2')?.innerText || '知乎动态').replace(/\s+/g, ' ').trim();
+            return {
+                sourceType: followItem?.type || 'article',
+                title,
+                url,
+                sourceText,
+                sourceKey: `follow::${stableHash(url)}::${stableHash(sourceText)}`
+            };
+        }
+
+        const isAnswer = inAnswer;
         const sourceType = isAnswer ? 'answer' : 'article';
         const answer = isAnswer ? _questionState.answers[_questionState.currentIndex] : null;
         const title = (isAnswer

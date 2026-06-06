@@ -240,10 +240,16 @@
             wrapper.appendChild(status);
         }
         if (status) status.textContent = `正在加载第 ${_followState.groups.length + 1} 组关注动态...`;
-        const batch = await loadNextFollowGroup(status);
-        renderFollowList();
-        requestAnimationFrame(() => window.scrollTo(0, 0));
-        return batch;
+        try {
+            const batch = await loadNextFollowGroup(status);
+            renderFollowList();
+            requestAnimationFrame(() => window.scrollTo(0, 0));
+            return batch;
+        } catch (e) {
+            console.error('加载关注动态失败:', e);
+            if (status) status.textContent = `加载失败: ${e.message || '网络或数据错误'}`;
+            return [];
+        }
     }
 
     function appendFollowHeader(container) {
@@ -434,11 +440,42 @@
         }
     }
 
+    function logFollowItemReadingRecord(item) {
+        if (!item) return;
+        try {
+            const url = (item.url || item.key || '').replace(/[?#].*$/, '');
+            if (!url) return;
+            const title = (item.title || '知乎内容').replace(/\s+-\s+知乎$/, '').replace(/\s+-\s+知乎专栏$/, '');
+            const author = item.author || '未知作者';
+            const contentKind = item.type || 'article';
+            
+            addReadingRecord({
+                url,
+                title,
+                author,
+                contentKind,
+                readAt: new Date().toISOString(),
+                manuallyMarked: false,
+                wikiCardId: null,
+                duration: 0
+            }).then(() => {
+                console.log('沉浸式阅读：已成功自动保存关注页条目历史', { url, title });
+            }).catch(e => {
+                console.warn('保存关注页条目历史失败', e);
+            });
+        } catch (e) {
+            console.warn('记录关注页条目历史错误', e);
+        }
+    }
+
     function renderFollowItem(indexInGroup = 0, groupIndex = _followState.currentGroupIndex) {
         const wrapper = document.getElementById('immersive-wrapper');
         const position = setCurrentFollowItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+
+        logFollowItemReadingRecord(itemRecord);
+
         _followState.view = 'item';
         clearQuestionTranslations();
         wrapper.classList.add('zh-has-top-nav');
@@ -530,6 +567,8 @@
     async function switchHomeToFollowInPlace() {
         if (_followState.collecting) return;
         if (!document.getElementById('immersive-wrapper')) { location.href = location.origin + '/follow'; return; }
+        // 已有数据：直接就地渲染，不弹遮罩、不停顿，保证来回切换丝滑
+        if (_followState.groups?.length) { renderFollowList(); return; }
         _followState.collecting = true;
         const status = showCollectOverlay('正在通过 API 加载关注动态...');
         try {

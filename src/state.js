@@ -1,3 +1,17 @@
+    // ═══════════════════════════════════════════════════════════
+    // 拦截并过滤知乎官方自带的失效 HTTPDNS 跨域请求（以保持控制台整洁）
+    // ═══════════════════════════════════════════════════════════
+    try {
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            if (typeof url === 'string' && (url.includes('118.89.204.198') || url.includes('resolv?host='))) {
+                this.send = function() {};
+                return originalOpen.apply(this, ['GET', 'javascript:void(0)']);
+            }
+            return originalOpen.apply(this, arguments);
+        };
+    } catch (e) {}
+
     let _articleNode = null;
     let _actionBarNode = null;
     let _postCommentsNode = null;
@@ -130,4 +144,14 @@
         log: [],
         history: [],
         runConfig: null
+    };
+
+    let _personalSpaceBackup = {
+        context: '',
+        homeView: '',
+        questionView: '',
+        followView: '',
+        scrollTop: 0,
+        hasTopNav: false,
+        hasHomeWide: false
     };

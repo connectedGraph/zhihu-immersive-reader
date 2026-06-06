@@ -3,16 +3,41 @@
     // ═══════════════════════════════════════════════════════════
 
     const WIKI_CARDS_DB_NAME = 'zh-wiki-cards-db';
-    const WIKI_CARDS_DB_VERSION = 1;
+    const WIKI_CARDS_DB_VERSION = 3;
     const WIKI_CARDS_STORE = 'cards';
     const WIKI_TAGS_STORE = 'tags';
+    const READING_RECORDS_STORE = 'reading_records';
 
     let _wikiCardsDbInstance = null;
 
     function openWikiCardsDB() {
         if (_wikiCardsDbInstance) return Promise.resolve(_wikiCardsDbInstance);
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open(WIKI_CARDS_DB_NAME, WIKI_CARDS_DB_VERSION);
+            let completed = false;
+            const timeoutId = setTimeout(() => {
+                if (!completed) {
+                    completed = true;
+                    reject(new Error('打开 IndexedDB 数据库超时 (5秒)，可能是浏览器数据库锁死。建议刷新页面重试。'));
+                }
+            }, 5000);
+
+            let request;
+            try {
+                request = indexedDB.open(WIKI_CARDS_DB_NAME, WIKI_CARDS_DB_VERSION);
+            } catch (err) {
+                clearTimeout(timeoutId);
+                reject(new Error('无法发起 IndexedDB 打开请求: ' + err.message));
+                return;
+            }
+            
+            request.onblocked = function() {
+                if (!completed) {
+                    completed = true;
+                    clearTimeout(timeoutId);
+                    reject(new Error('IndexedDB 被阻塞，请关闭其他标签页并重试'));
+                }
+            };
+
             request.onupgradeneeded = function(event) {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains(WIKI_CARDS_STORE)) {
@@ -23,13 +48,32 @@
                 if (!db.objectStoreNames.contains(WIKI_TAGS_STORE)) {
                     db.createObjectStore(WIKI_TAGS_STORE, { keyPath: 'tag' });
                 }
+                if (!db.objectStoreNames.contains(READING_RECORDS_STORE)) {
+                    const recordStore = db.createObjectStore(READING_RECORDS_STORE, { keyPath: 'url' });
+                    recordStore.createIndex('readAt', 'readAt', { unique: false });
+                }
             };
             request.onsuccess = function(event) {
-                _wikiCardsDbInstance = event.target.result;
-                resolve(_wikiCardsDbInstance);
+                if (!completed) {
+                    completed = true;
+                    clearTimeout(timeoutId);
+                    _wikiCardsDbInstance = event.target.result;
+                    _wikiCardsDbInstance.onversionchange = function() {
+                        if (_wikiCardsDbInstance) {
+                            _wikiCardsDbInstance.close();
+                            _wikiCardsDbInstance = null;
+                        }
+                        console.log('检测到数据库版本变更，已主动断开旧版数据库连接。');
+                    };
+                    resolve(_wikiCardsDbInstance);
+                }
             };
             request.onerror = function(event) {
-                reject(new Error('Wiki IndexedDB 打开失败: ' + (event.target.error?.message || '未知错误')));
+                if (!completed) {
+                    completed = true;
+                    clearTimeout(timeoutId);
+                    reject(new Error('Wiki IndexedDB 打开失败: ' + (event.target.error?.message || '未知错误')));
+                }
             };
         });
     }
@@ -79,10 +123,14 @@
     async function getAllWikiCards() {
         const db = await openWikiCardsDB();
         return new Promise((resolve, reject) => {
-            const tx = db.transaction(WIKI_CARDS_STORE, 'readonly');
-            const request = tx.objectStore(WIKI_CARDS_STORE).getAll();
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => reject(new Error('读取 Wiki 卡片失败'));
+            try {
+                const tx = db.transaction(WIKI_CARDS_STORE, 'readonly');
+                const request = tx.objectStore(WIKI_CARDS_STORE).getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => reject(new Error('读取 Wiki 卡片失败'));
+            } catch (err) {
+                reject(err);
+            }
         });
     }
 
@@ -166,6 +214,28 @@
         });
     }
 
+    async function clearAllCardEmbeddings() {
+        const db = await openWikiCardsDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(WIKI_CARDS_STORE, 'readwrite');
+            const store = tx.objectStore(WIKI_CARDS_STORE);
+            let cleared = 0;
+            store.openCursor().onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (!cursor) return;
+                const card = cursor.value;
+                if (card && card.embedding) {
+                    delete card.embedding;
+                    cursor.update(card);
+                    cleared++;
+                }
+                cursor.continue();
+            };
+            tx.oncomplete = () => resolve(cleared);
+            tx.onerror = () => reject(new Error('清空向量字段失败'));
+        });
+    }
+
     function cosineSimilarity(vecA, vecB) {
         if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
         let dot = 0, normA = 0, normB = 0;
@@ -189,4 +259,85 @@
             .sort((a, b) => b.score - a.score)
             .slice(0, topK);
         return scored;
+    }
+
+    async function addReadingRecord(record) {
+        const db = await openWikiCardsDB();
+        const recordToSave = {
+            ...record,
+            readAt: record.readAt || new Date().toISOString()
+        };
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+            tx.objectStore(READING_RECORDS_STORE).put(recordToSave);
+            tx.oncomplete = () => resolve(recordToSave);
+            tx.onerror = () => reject(new Error('保存阅读历史失败'));
+        });
+    }
+
+    async function updateReadingProgress(url, progress) {
+        const db = await openWikiCardsDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+            const store = tx.objectStore(READING_RECORDS_STORE);
+            const getReq = store.get(url);
+            getReq.onsuccess = () => {
+                const existing = getReq.result;
+                if (!existing) { resolve(); return; }
+                const next = Math.max(0, Math.min(100, Math.round(progress)));
+                if (next <= (existing.progress || 0)) { resolve(); return; }
+                existing.progress = next;
+                store.put(existing);
+            };
+            getReq.onerror = () => reject(new Error('读取阅读记录失败'));
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(new Error('更新阅读进度失败'));
+        });
+    }
+
+    async function getAllReadingRecords() {
+        const db = await openWikiCardsDB();
+        return new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction(READING_RECORDS_STORE, 'readonly');
+                const req = tx.objectStore(READING_RECORDS_STORE).getAll();
+                req.onsuccess = () => {
+                    try {
+                        const results = req.result || [];
+                        results.sort((a, b) => {
+                            const dateA = a && a.readAt ? String(a.readAt) : '';
+                            const dateB = b && b.readAt ? String(b.readAt) : '';
+                            return dateB.localeCompare(dateA);
+                        });
+                        resolve(results);
+                    } catch (sortErr) {
+                        console.error('排序阅读历史失败:', sortErr);
+                        resolve(req.result || []); // 即使排序失败也必须 resolve，绝不能无限期挂起
+                    }
+                };
+                req.onerror = () => reject(new Error('读取阅读历史失败'));
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    async function deleteReadingRecord(url) {
+        const db = await openWikiCardsDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+            tx.objectStore(READING_RECORDS_STORE).delete(url);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(new Error('删除阅读历史失败'));
+        });
+    }
+
+    async function clearAllReadingRecords() {
+        const db = await openWikiCardsDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+            tx.objectStore(READING_RECORDS_STORE).clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(new Error('清空阅读历史失败'));
+        });
     }

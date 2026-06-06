@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      4.3.2
+// @version      5.0.0
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader

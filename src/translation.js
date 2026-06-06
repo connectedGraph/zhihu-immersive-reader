@@ -196,12 +196,23 @@ async function processTranslation() {
     // 兼容性挂载，确保能找到容器
     if (richTextContainer) richTextContainer.prepend(summaryCard);
 
+    const timeoutPromise = (promise, ms, errMessage) => {
+        let timeoutId;
+        const delay = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(errMessage)), ms);
+        });
+        return Promise.race([
+            promise.then(val => { clearTimeout(timeoutId); return val; }),
+            delay
+        ]);
+    };
+
     try {
-        // 2. 【修改】改为阻塞模式，等待摘要生成完成
-        const sumText = await generateSummary(fullText);
+        // 2. 【修改】改为阻塞模式，等待摘要生成完成，并加上 15 秒超时守护
+        const sumText = await timeoutPromise(generateSummary(fullText), 15000, "AI 摘要生成超时，已自动跳过背景提取以保障流畅度");
         document.getElementById('zh-sum-text').innerText = sumText;
     } catch (e) {
-        document.getElementById('zh-sum-text').innerHTML = `<span style="color:red">摘要生成失败：${e.message}</span>`;
+        document.getElementById('zh-sum-text').innerHTML = `<span style="color:var(--zh-accent); font-weight:bold;">${escapeHTML(e.message)}</span>`;
         _articleSummary = '';
         window._articleSummary = '';
     }

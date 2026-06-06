@@ -38,27 +38,35 @@
         radarBtn.addEventListener('click', showRadarReportModal);
 
         const shareBtn = document.createElement('button');
+        shareBtn.id = 'zh-share-btn';
         shareBtn.className = 'zh-square-btn';
         shareBtn.title = '零损分享';
         shareBtn.innerHTML = ICONS.share;
-        shareBtn.addEventListener('click', runZeroLossShare);
-
-        if (isHomePage()) {
-            const wikiBtn = document.createElement('button');
-            wikiBtn.id = 'zh-wiki-btn';
-            wikiBtn.className = 'zh-square-btn';
-            wikiBtn.title = '信息流 Wiki 面板';
-            wikiBtn.innerHTML = ICONS.wiki;
-            wikiBtn.addEventListener('click', renderWikiDashboard);
-            toolsPanel.appendChild(wikiBtn);
+        if (isHomePage() || isFollowPage()) {
+            shareBtn.classList.add('zh-btn-disabled');
+            shareBtn.title = '零损分享 (当前页面不可用)';
         }
+        shareBtn.addEventListener('click', () => {
+            if (isHomePage() || isFollowPage()) {
+                showToast('零损分享目前仅支持文章正文或回答单篇阅读页哦~');
+            } else {
+                runZeroLossShare();
+            }
+        });
 
-        const toreadListBtn = document.createElement('button');
-        toreadListBtn.className = 'zh-square-btn';
-        toreadListBtn.title = '待读列表';
-        toreadListBtn.innerHTML = ICONS.toread;
-        toreadListBtn.addEventListener('click', showToReadListModal);
-        toolsPanel.appendChild(toreadListBtn);
+        const spaceBtn = document.createElement('button');
+        spaceBtn.id = 'zh-space-btn';
+        spaceBtn.className = 'zh-square-btn';
+        spaceBtn.title = '个人空间 (打卡/待读/历史/Wiki)';
+        spaceBtn.innerHTML = ICONS.wiki;
+        spaceBtn.addEventListener('click', () => {
+            if (_homeState.view === 'personal-space') {
+                closePersonalSpace();
+            } else {
+                renderPersonalSpaceDashboard();
+            }
+        });
+        toolsPanel.appendChild(spaceBtn);
 
         const helpBtn = document.createElement('button');
         helpBtn.className = 'zh-square-btn';
@@ -79,11 +87,8 @@
         themeBtn.addEventListener('click', () => { currentThemeIndex = (currentThemeIndex + 1) % THEMES.length; applyTheme(currentThemeIndex); });
 
         toolsPanel.appendChild(translateBtn);
-        toolsPanel.appendChild(expressionBtn);
         toolsPanel.appendChild(radarBtn);
-        if (!isHomePage()) {
-            toolsPanel.appendChild(shareBtn);
-        }
+        toolsPanel.appendChild(shareBtn);
         toolsPanel.appendChild(settingsBtn);
         toolsPanel.appendChild(helpBtn);
         toolsPanel.appendChild(githubBtn);
@@ -214,6 +219,7 @@ function enterImmersive() {
     }
 
     function _doExitImmersive() {
+        stopReadingProgressTracker();
         stopArticleAdCleanup();
         removeCollectOverlay();
         restoreLiveMount();
@@ -306,4 +312,14 @@ function enterImmersive() {
         _actionBarNode = null;
         _postCommentsNode = null;
         _postCommentInputNode = null;
+
+        _personalSpaceBackup = {
+            context: '',
+            homeView: '',
+            questionView: '',
+            followView: '',
+            scrollTop: 0,
+            hasTopNav: false,
+            hasHomeWide: false
+        };
     }

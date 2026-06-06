@@ -469,10 +469,16 @@
         }
         if (status) status.textContent = `正在加载第 ${_homeState.groups.length + 1} 组首页推荐...`;
         const keepScrollY = window.scrollY;
-        const batch = await loadNextHomeGroup(status, { switchToNewGroup: true });
-        renderHomeList();
-        requestAnimationFrame(() => window.scrollTo(0, batch.length ? 0 : keepScrollY));
-        return batch;
+        try {
+            const batch = await loadNextHomeGroup(status, { switchToNewGroup: true });
+            renderHomeList();
+            requestAnimationFrame(() => window.scrollTo(0, batch.length ? 0 : keepScrollY));
+            return batch;
+        } catch (e) {
+            console.error('加载推荐动态失败:', e);
+            if (status) status.textContent = `加载失败: ${e.message || '网络或数据错误'}`;
+            return [];
+        }
     }
 
     function getHomeLayout() {
@@ -711,11 +717,42 @@
         });
     }
 
+    function logFeedItemReadingRecord(item) {
+        if (!item) return;
+        try {
+            const url = (item.url || item.key || '').replace(/[?#].*$/, '');
+            if (!url) return;
+            const title = (item.title || '知乎内容').replace(/\s+-\s+知乎$/, '').replace(/\s+-\s+知乎专栏$/, '');
+            const author = item.author || '未知作者';
+            const contentKind = item.type || 'article';
+            
+            addReadingRecord({
+                url,
+                title,
+                author,
+                contentKind,
+                readAt: new Date().toISOString(),
+                manuallyMarked: false,
+                wikiCardId: null,
+                duration: 0
+            }).then(() => {
+                console.log('沉浸式阅读：已成功自动保存历史记录', { url, title });
+            }).catch(e => {
+                console.warn('保存历史记录失败', e);
+            });
+        } catch (e) {
+            console.warn('记录历史记录错误', e);
+        }
+    }
+
     function renderHomeItem(indexInGroup = 0, groupIndex = _homeState.currentGroupIndex) {
         const wrapper = document.getElementById('immersive-wrapper');
         const position = setCurrentHomeItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+        
+        logFeedItemReadingRecord(itemRecord);
+
         _homeState.view = 'item';
         clearHomeTranslations();
         wrapper.classList.add('zh-has-top-nav');

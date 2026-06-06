@@ -61,16 +61,7 @@ const SETTINGS_MODAL_HTML = (cfg) => `
 
     <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
         <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">首页信息流 Wiki</div>
-        <label style="display:block; margin-bottom:5px;">采集条数:</label>
-        <input type="number" id="zh-cfg-wiki-max" min="1" value="${cfg.wikiMaxItems || 100}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-
-        <label style="display:block; margin-bottom:5px;">AI 并发数 (0 为不限):</label>
-        <input type="number" id="zh-cfg-wiki-concurrency" min="0" value="${cfg.wikiConcurrency ?? 20}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-
-        <label style="display:block; margin-bottom:5px;">AI RPM (0 为不限):</label>
-        <input type="number" id="zh-cfg-wiki-rpm" min="0" value="${cfg.wikiRpm ?? 300}" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-
-        <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-wiki-final" ${cfg.wikiFinalSynthesis !== false ? 'checked' : ''}> 生成今日总览</label>
+        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">采集条数 / 并发 / RPM / 今日总览 / Obsidian 格式等参数，已移至「个人空间 → Wiki 采集」启动时设置。</div>
         <button id="zh-preview-prompts-btn" type="button" class="zh-test-btn">查看当前系统提示词</button>
     </div>
 
@@ -79,7 +70,8 @@ const SETTINGS_MODAL_HTML = (cfg) => `
         <label style="display:block; margin-bottom:5px;">Embedding Host (带 /v1):</label>
         <input type="text" id="zh-cfg-embedding-host" value="${cfg.embeddingHost || ''}" placeholder="https://api.openai.com/v1" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
         <label style="display:block; margin-bottom:5px;">Embedding 模型:</label>
-        <input type="text" id="zh-cfg-embedding-model" value="${cfg.embeddingModel || 'text-embedding-3-small'}" placeholder="text-embedding-3-small" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
+        <input type="text" id="zh-cfg-embedding-model" value="${cfg.embeddingModel || 'text-embedding-3-small'}" placeholder="text-embedding-3-small" style="width:100%; margin-bottom:4px; box-sizing:border-box;">
+        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">⚠️ 更换模型会使已有向量失效（不同模型向量不兼容）。保存时会提示你清空旧向量并重跑，或保留旧向量、放弃本次更换。</div>
         <label style="display:block; margin-bottom:5px;">Embedding Key (留空则复用 LLM Key):</label>
         <input type="password" id="zh-cfg-embedding-key" value="${cfg.embeddingKey || ''}" placeholder="留空则使用上方 API Key" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
     </div>

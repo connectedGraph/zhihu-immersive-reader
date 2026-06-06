@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
     wikiConcurrency: 20,
     wikiRpm: 300,
     wikiFinalSynthesis: true,
+    wikiObsidianOptimized: false,
     embeddingHost: '',
     embeddingModel: 'text-embedding-3-small',
     embeddingKey: '',
