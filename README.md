@@ -6,9 +6,10 @@
 
 适配页面：知乎首页推荐流(zhihu.com)、关注动态页 (`/follow`)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
 
-- feature image:[点击查看脚本演示](https://zhuanlan.zhihu.com/p/2039743943340991262)
-[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-green.svg)](https://greasyfork.org/zh-CN/scripts/573678)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Demo](https://img.shields.io/badge/演示-脚本视频演示-FF69B4?style=for-the-badge&logo=youtube&logoColor=white)](https://zhuanlan.zhihu.com/p/2039743943340991262)
+[![Landing Page](https://img.shields.io/badge/官网-Landing%20页-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://6767.chat/zhihu-immersive-reader/)
+[![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-4BBA64?style=for-the-badge&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/573678)
+[![License](https://img.shields.io/badge/license-MIT-007EC6?style=for-the-badge)](LICENSE)
 ---
 
 ## 功能概览
