@@ -289,11 +289,11 @@
     }
 
     function getFollowLayout() {
-        return localStorage.getItem('zh-follow-layout') || 'single';
+        return crossOriginGet('zh-follow-layout') || 'single';
     }
 
     function setFollowLayout(layout) {
-        localStorage.setItem('zh-follow-layout', layout);
+        crossOriginSet('zh-follow-layout', layout);
     }
 
     function renderFollowGroupToolbar(wrapper) {

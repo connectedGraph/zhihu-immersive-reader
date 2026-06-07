@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知乎沉浸式翻译(API配置组-雷达进度修复版)
 // @namespace    https://github.com/connectedGraph
-// @version      5.0.0
+// @version      5.0.2
 // @description  知乎通用沉浸式阅读+AI翻译 | API配置组 + 雷达进度保留 + Wiki配置快照 + 零损分享
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader

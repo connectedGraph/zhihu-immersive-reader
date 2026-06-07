@@ -20,10 +20,10 @@
     }
 
     function getAnswerKey(item, index) {
-        const metaUrl = item.querySelector('meta[itemprop="url"]')?.content;
-        if (metaUrl) return metaUrl;
         const answerLink = item.querySelector('a[href*="/answer/"]')?.href;
         if (answerLink) return answerLink;
+        const metaUrl = item.querySelector('meta[itemprop="url"]')?.content;
+        if (metaUrl && /\/answer\//.test(metaUrl)) return metaUrl;
         const zop = item.getAttribute('data-zop');
         if (zop) {
             try {
@@ -658,7 +658,14 @@
                 createQuestionToolsPanel();
                 window._isImmersive = true;
                 renderQuestionAnswer(0, true);
-                if (config.autoSum || config.autoTr) document.getElementById('zh-translate-btn')?.click();
+                if (config.autoSum || config.autoTr) {
+                    const triggerAutoTranslate = () => document.getElementById('zh-translate-btn')?.click();
+                    if (document.readyState === 'complete') {
+                        setTimeout(triggerAutoTranslate, 800);
+                    } else {
+                        window.addEventListener('load', () => setTimeout(triggerAutoTranslate, 800), { once: true });
+                    }
+                }
                 logCurrentPageReadingRecord();
                 return;
             }

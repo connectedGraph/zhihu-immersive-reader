@@ -1,6 +1,7 @@
 // ----- 核心样式 (动态注入的 <style> 内容) -----
 const STYLE_CSS = `
     body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: 'Times New Roman', 'KaiTi', 'STKaiti', serif !important; transition: background-color 0.5s ease !important; }
+    .AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar, .css-1nalqj2, .zh-hidden-by-immersive { display: none !important; position: static !important; visibility: hidden !important; }
     #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; transition: all 0.5s ease !important; }
     #immersive-wrapper h1, #immersive-wrapper h2, #immersive-wrapper h3 { font-weight: bold; color: var(--zh-title) !important; border-bottom: 1px dashed var(--zh-border) !important; padding-bottom: 12px; margin-top: 1.5em; }
     #immersive-wrapper blockquote { border-left: 4px solid var(--zh-accent) !important; background: var(--zh-quote) !important; color: var(--zh-text) !important; padding: 15px 20px !important; margin: 20px 0 !important; }
@@ -222,6 +223,7 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    #immersive-wrapper .zh-space-hidden { display: none !important; }
     /* Action bar 按钮 */
     .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }
     .zh-action-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-text); cursor: pointer; font-family: inherit; font-size: 13px; line-height: 1.3; text-decoration: none !important; transition: all 0.15s ease; white-space: nowrap; }

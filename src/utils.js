@@ -129,6 +129,26 @@
         localStorage.setItem('zh-immersive-config', json);
     }
 
+    function crossOriginGet(key) {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const gm = GM_getValue(key, null);
+                if (gm != null) return gm;
+            }
+        } catch (e) {}
+        try {
+            const ls = localStorage.getItem(key);
+            if (ls != null && typeof GM_setValue === 'function') GM_setValue(key, ls);
+            return ls;
+        } catch (e) {}
+        return null;
+    }
+
+    function crossOriginSet(key, value) {
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, value); } catch (e) {}
+        try { localStorage.setItem(key, value); } catch (e) {}
+    }
+
     function cleanupAnswerClone(clone) {
         clone.querySelectorAll('script, style, .pc-article-answer-card, .pc-article-answer-text-chain, .pc-article-answer-big-img, .ecommerce-ad-box, .MCNLinkCard').forEach(el => el.remove());
         clone.querySelectorAll('.ContentItem-actions').forEach(el => {

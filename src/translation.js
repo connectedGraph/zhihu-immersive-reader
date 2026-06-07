@@ -196,6 +196,11 @@ async function processTranslation() {
     // 兼容性挂载，确保能找到容器
     if (richTextContainer) richTextContainer.prepend(summaryCard);
 
+    // 防御：确保翻译卡片可见（知乎 React 可能在初始渲染时覆盖 body class）
+    if (window._trVisible && !document.body.classList.contains('zh-show-tr')) {
+        document.body.classList.add('zh-show-tr');
+    }
+
     const timeoutPromise = (promise, ms, errMessage) => {
         let timeoutId;
         const delay = new Promise((_, reject) => {
@@ -218,6 +223,10 @@ async function processTranslation() {
     }
 
     // 3. 【注意】以下代码在摘要生成完成后才执行
+    // 再次确保翻译卡片可见（摘要生成期间 body class 可能被外部脚本覆盖）
+    if (window._trVisible && !document.body.classList.contains('zh-show-tr')) {
+        document.body.classList.add('zh-show-tr');
+    }
     const nodes = initialNodes.length ? initialNodes : collectTranslationNodes(richTextContainer);
     const sysTr = `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。
 只翻译 CONTENT_TO_TRANSLATE_ONLY_BEGIN 和 CONTENT_TO_TRANSLATE_ONLY_END 之间的内容。

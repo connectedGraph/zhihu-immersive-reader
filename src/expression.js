@@ -56,7 +56,7 @@
 
     function loadExpressionBook() {
         try {
-            const raw = localStorage.getItem(EXPRESSION_BOOK_KEY);
+            const raw = crossOriginGet(EXPRESSION_BOOK_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             return Array.isArray(parsed) ? parsed : [];
         } catch (err) {
@@ -68,11 +68,11 @@
     function saveExpressionBook(items) {
         const safeItems = (Array.isArray(items) ? items : []).slice(0, EXPRESSION_BOOK_MAX);
         try {
-            localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems));
+            crossOriginSet(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems));
             return true;
         } catch (err) {
             try {
-                localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(EXPRESSION_BOOK_MAX / 2))));
+                crossOriginSet(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(EXPRESSION_BOOK_MAX / 2))));
                 return true;
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：表达本写入失败', innerErr);

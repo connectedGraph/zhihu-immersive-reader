@@ -142,6 +142,20 @@ node build.js
 
 ## 更新日志
 
+### 2026-06-07 · v5.0.2
+
+- **fix**: 修复问答页回答 URL 抓取错误——`getAnswerKey` 优先取到了作者主页 `meta[itemprop="url"]`(属于 Person schema) 而非回答链接，导致待读/历史/Wiki 记录的 URL 指向个人主页；现优先匹配 `a[href*="/answer/"]`
+- **fix**: 修复 `zhuanlan.zhihu.com` 与 `www.zhihu.com` 个人空间数据不同步的 P0 问题——所有个人空间相关存储（待读列表、表达收藏本、阅读笔记、Wiki 历史、翻译缓存、自定义主题、布局偏好、用户信息、API 配置组）统一迁移至 GM 跨域存储，localStorage 保留为写穿缓存
+- **fix**: 阅读历史 (IndexedDB) 新增 GM 同步层——写入/更新/删除时同步推送 GM 存储，读取时自动合并其他域的记录，确保专栏页的阅读记录在主站个人空间中可见
+
+### 2026-06-07 · v5.0.1
+
+- **fix**: 修复专栏文章页 (`zhuanlan /p`) 进入沉浸模式时互动栏 (`.ContentItem-actions`) 残留在个人空间顶部的 bug——根因为 CSS `display: flex !important` 优先级高于个人空间的 inline `display:none`，引入 `.zh-space-hidden { display: none !important }` class 彻底压制
+- **fix**: 修复开启"展卷时自动生成全文摘要/翻译"后直接进入文章页不显示摘要与翻译卡片的 bug——改用 `window load` 事件确认页面完整加载后再触发，替代硬编码延迟；并加入防御性 `zh-show-tr` class 重断言
+- **fix**: 修复专栏页 (`zhuanlan.zhihu.com`) 调用知乎写 API（赞同/收藏等）及用户信息接口因跨域失败的问题，自动检测跨域场景并切换为 `GM_xmlhttpRequest`
+- **fix**: 修复从专栏页进入个人空间后退出沉浸模式时文章内容丢失无法还原的问题（退出时先清理个人空间对 wrapper 子元素的隐藏状态）
+- **fix**: 沉浸模式下 CSS 强制隐藏知乎原生侧边栏 (`.CornerButtons`, `.GlobalSideBar`) 及顶部/底部固定栏
+
 ### 2026-06-07 · v5.0.0
 
 - **feat**: 新增 **个人空间** 功能，集成阅读打卡热力图、阅读记录历史与 Wiki 任务工作台

@@ -30,7 +30,7 @@
 
     function loadWikiHistory() {
         try {
-            const raw = localStorage.getItem(WIKI_HISTORY_KEY);
+            const raw = crossOriginGet(WIKI_HISTORY_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             if (!Array.isArray(parsed)) return [];
             const now = new Date().toISOString();
@@ -59,7 +59,8 @@
 
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
-                localStorage.setItem(WIKI_HISTORY_KEY, JSON.stringify(records));
+                const json = JSON.stringify(records);
+                crossOriginSet(WIKI_HISTORY_KEY, json);
                 wikiState.history = records;
                 return true;
             } catch (err) {
@@ -2326,6 +2327,7 @@
             Array.from(wrapper.children).forEach(child => {
                 if (child.id !== 'zh-space-container') {
                     siblingCount++;
+                    child.classList.remove('zh-space-hidden');
                     if (child.hasAttribute('data-zh-space-orig-display')) {
                         child.style.display = child.getAttribute('data-zh-space-orig-display');
                         child.removeAttribute('data-zh-space-orig-display');
@@ -2447,6 +2449,7 @@
                     child.setAttribute('data-zh-space-orig-display', child.style.display || '');
                 }
                 child.style.display = 'none';
+                child.classList.add('zh-space-hidden');
             }
         });
 
@@ -2466,8 +2469,8 @@
         sidebarTitle.className = 'zh-space-sidebar-title';
         sidebarTitle.style.cssText = 'display:flex; flex-direction:column; align-items:center; text-align:center; padding:18px 10px; border-bottom:1px dashed var(--zh-border); margin-bottom:15px; gap:10px;';
         
-        const cachedAvatar = localStorage.getItem('zh-user-avatar') || '';
-        const cachedName = localStorage.getItem('zh-user-name') || '个人空间';
+        const cachedAvatar = crossOriginGet('zh-user-avatar') || '';
+        const cachedName = crossOriginGet('zh-user-name') || '个人空间';
 
         sidebarTitle.innerHTML = `
             <img class="zh-space-avatar" src="${cachedAvatar || 'https://pic1.zhimg.com/v2-ab97017482aa2a5d112b2d282c6b3e39_l.jpg'}" style="width:56px; height:56px; border-radius:50%; border:2px solid var(--zh-accent); box-shadow:0 4px 10px rgba(0,0,0,0.1); object-fit:cover; display:block;" />
@@ -3213,12 +3216,31 @@
 
     async function fetchZhihuProfile() {
         try {
-            const res = await fetch('https://www.zhihu.com/api/v4/me');
-            if (!res.ok) throw new Error('Zhihu API Error');
-            const data = await res.json();
+            const url = 'https://www.zhihu.com/api/v4/me';
+            const xhr = getUserscriptXHR();
+            let data;
+            if (xhr && !url.startsWith(location.origin)) {
+                data = await new Promise((resolve, reject) => {
+                    xhr({
+                        method: 'GET', url, timeout: 10000, anonymous: false,
+                        headers: { 'Accept': 'application/json' },
+                        onload: res => {
+                            if (res.status >= 200 && res.status < 300) {
+                                try { resolve(JSON.parse(res.responseText)); } catch (e) { reject(e); }
+                            } else { reject(new Error(`HTTP ${res.status}`)); }
+                        },
+                        onerror: () => reject(new Error('network error')),
+                        ontimeout: () => reject(new Error('timeout'))
+                    });
+                });
+            } else {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Zhihu API Error');
+                data = await res.json();
+            }
             if (data && data.avatar_url) {
-                localStorage.setItem('zh-user-avatar', data.avatar_url);
-                localStorage.setItem('zh-user-name', data.name || '个人空间');
+                crossOriginSet('zh-user-avatar', data.avatar_url);
+                crossOriginSet('zh-user-name', data.name || '个人空间');
                 return data;
             }
         } catch (e) {

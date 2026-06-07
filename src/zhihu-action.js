@@ -47,6 +47,44 @@
         }
 
         const url = buildZhihuActionUrl(path, options.query);
+
+        // zhuanlan.zhihu.com → www.zhihu.com 跨域，需要 GM_xmlhttpRequest
+        const isCrossOrigin = !url.startsWith(location.origin);
+        const xhr = isCrossOrigin ? getUserscriptXHR() : null;
+
+        if (xhr) {
+            return new Promise((resolve, reject) => {
+                xhr({
+                    method,
+                    url,
+                    headers,
+                    data: body,
+                    timeout: 15000,
+                    anonymous: false,
+                    responseType: 'text',
+                    onload: res => {
+                        let data = null;
+                        if (res.responseText) {
+                            try { data = JSON.parse(res.responseText); } catch (e) { data = res.responseText; }
+                        }
+                        if (res.status >= 200 && res.status < 300) {
+                            resolve({ status: res.status, data });
+                        } else {
+                            const message = (data && typeof data === 'object' && (data.error?.message || data.message))
+                                || (typeof data === 'string' && data.slice(0, 200))
+                                || `HTTP ${res.status}`;
+                            const err = new Error(`知乎接口错误：${message}`);
+                            err.status = res.status;
+                            err.data = data;
+                            reject(err);
+                        }
+                    },
+                    onerror: e => reject(new Error(`知乎接口网络错误：${e?.error || e?.message || '未知错误'}`)),
+                    ontimeout: () => reject(new Error('知乎接口请求超时'))
+                });
+            });
+        }
+
         const res = await fetch(url, {
             method,
             credentials: 'include',

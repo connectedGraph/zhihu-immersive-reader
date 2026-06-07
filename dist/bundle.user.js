@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.0.0
+// @version      5.0.2
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -143,6 +143,7 @@ const ICONS = {
 // ----- 核心样式 (动态注入的 <style> 内容) -----
 const STYLE_CSS = `
     body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: 'Times New Roman', 'KaiTi', 'STKaiti', serif !important; transition: background-color 0.5s ease !important; }
+    .AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar, .css-1nalqj2, .zh-hidden-by-immersive { display: none !important; position: static !important; visibility: hidden !important; }
     #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; transition: all 0.5s ease !important; }
     #immersive-wrapper h1, #immersive-wrapper h2, #immersive-wrapper h3 { font-weight: bold; color: var(--zh-title) !important; border-bottom: 1px dashed var(--zh-border) !important; padding-bottom: 12px; margin-top: 1.5em; }
     #immersive-wrapper blockquote { border-left: 4px solid var(--zh-accent) !important; background: var(--zh-quote) !important; color: var(--zh-text) !important; padding: 15px 20px !important; margin: 20px 0 !important; }
@@ -364,6 +365,7 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    #immersive-wrapper .zh-space-hidden { display: none !important; }
     /* Action bar 按钮 */
     .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }
     .zh-action-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-text); cursor: pointer; font-family: inherit; font-size: 13px; line-height: 1.3; text-decoration: none !important; transition: all 0.15s ease; white-space: nowrap; }
@@ -1062,11 +1064,8 @@ const HELP_MODAL_HTML = `
 
     function loadApiProfiles() {
         try {
-            let raw = null;
-            if (typeof GM_getValue === 'function') raw = GM_getValue(API_PROFILES_KEY, null);
-            if (!raw) raw = localStorage.getItem(API_PROFILES_KEY);
+            const raw = crossOriginGet(API_PROFILES_KEY);
             const store = normalizeApiProfileStore(raw ? JSON.parse(raw) : null);
-            if (typeof GM_setValue === 'function' && raw) GM_setValue(API_PROFILES_KEY, typeof raw === 'string' ? raw : JSON.stringify(store));
             return store;
         } catch (err) {
             console.warn('知乎沉浸式阅读：API 配置组读取失败', err);
@@ -1077,8 +1076,7 @@ const HELP_MODAL_HTML = `
     function saveApiProfiles(store) {
         const normalized = normalizeApiProfileStore(store);
         const json = JSON.stringify(normalized);
-        if (typeof GM_setValue === 'function') GM_setValue(API_PROFILES_KEY, json);
-        localStorage.setItem(API_PROFILES_KEY, json);
+        crossOriginSet(API_PROFILES_KEY, json);
         return normalized;
     }
 
@@ -1322,6 +1320,26 @@ const HELP_MODAL_HTML = `
         const json = JSON.stringify(config);
         if (typeof GM_setValue === 'function') GM_setValue('zh-immersive-config', json);
         localStorage.setItem('zh-immersive-config', json);
+    }
+
+    function crossOriginGet(key) {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const gm = GM_getValue(key, null);
+                if (gm != null) return gm;
+            }
+        } catch (e) {}
+        try {
+            const ls = localStorage.getItem(key);
+            if (ls != null && typeof GM_setValue === 'function') GM_setValue(key, ls);
+            return ls;
+        } catch (e) {}
+        return null;
+    }
+
+    function crossOriginSet(key, value) {
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, value); } catch (e) {}
+        try { localStorage.setItem(key, value); } catch (e) {}
     }
 
     function cleanupAnswerClone(clone) {
@@ -2011,6 +2029,44 @@ const HELP_MODAL_HTML = `
         }
 
         const url = buildZhihuActionUrl(path, options.query);
+
+        // zhuanlan.zhihu.com → www.zhihu.com 跨域，需要 GM_xmlhttpRequest
+        const isCrossOrigin = !url.startsWith(location.origin);
+        const xhr = isCrossOrigin ? getUserscriptXHR() : null;
+
+        if (xhr) {
+            return new Promise((resolve, reject) => {
+                xhr({
+                    method,
+                    url,
+                    headers,
+                    data: body,
+                    timeout: 15000,
+                    anonymous: false,
+                    responseType: 'text',
+                    onload: res => {
+                        let data = null;
+                        if (res.responseText) {
+                            try { data = JSON.parse(res.responseText); } catch (e) { data = res.responseText; }
+                        }
+                        if (res.status >= 200 && res.status < 300) {
+                            resolve({ status: res.status, data });
+                        } else {
+                            const message = (data && typeof data === 'object' && (data.error?.message || data.message))
+                                || (typeof data === 'string' && data.slice(0, 200))
+                                || `HTTP ${res.status}`;
+                            const err = new Error(`知乎接口错误：${message}`);
+                            err.status = res.status;
+                            err.data = data;
+                            reject(err);
+                        }
+                    },
+                    onerror: e => reject(new Error(`知乎接口网络错误：${e?.error || e?.message || '未知错误'}`)),
+                    ontimeout: () => reject(new Error('知乎接口请求超时'))
+                });
+            });
+        }
+
         const res = await fetch(url, {
             method,
             credentials: 'include',
@@ -2340,7 +2396,7 @@ const HELP_MODAL_HTML = `
 
     function loadTranslationCache() {
         try {
-            const raw = localStorage.getItem(TRANSLATION_CACHE_KEY);
+            const raw = crossOriginGet(TRANSLATION_CACHE_KEY);
             const parsed = raw ? JSON.parse(raw) : null;
             return parsed && typeof parsed === 'object'
                 ? { entries: parsed.entries || {}, order: Array.isArray(parsed.order) ? parsed.order : [] }
@@ -2365,14 +2421,14 @@ const HELP_MODAL_HTML = `
             delete entries[oldKey];
         }
         try {
-            localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+            crossOriginSet(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
         } catch (err) {
             while (order.length > Math.floor(TRANSLATION_CACHE_MAX / 2)) {
                 const oldKey = order.shift();
                 delete entries[oldKey];
             }
             try {
-                localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+                crossOriginSet(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：翻译缓存写入失败', innerErr);
             }
@@ -2443,7 +2499,7 @@ const HELP_MODAL_HTML = `
     // 启动时把用户自定义主题追加进 THEMES（mutate，不重新赋值 const）
     function loadCustomThemes() {
         try {
-            const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+            const raw = crossOriginGet(CUSTOM_THEMES_KEY);
             const list = raw ? JSON.parse(raw) : [];
             if (Array.isArray(list)) {
                 list.forEach(t => {
@@ -2456,7 +2512,7 @@ const HELP_MODAL_HTML = `
 
     function saveCustomThemes() {
         const custom = THEMES.filter(t => t.custom);
-        try { localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(custom)); } catch (e) {}
+        try { crossOriginSet(CUSTOM_THEMES_KEY, JSON.stringify(custom)); } catch (e) {}
     }
 
     function addCustomTheme(name, vars) {
@@ -3211,6 +3267,11 @@ async function processTranslation() {
     // 兼容性挂载，确保能找到容器
     if (richTextContainer) richTextContainer.prepend(summaryCard);
 
+    // 防御：确保翻译卡片可见（知乎 React 可能在初始渲染时覆盖 body class）
+    if (window._trVisible && !document.body.classList.contains('zh-show-tr')) {
+        document.body.classList.add('zh-show-tr');
+    }
+
     const timeoutPromise = (promise, ms, errMessage) => {
         let timeoutId;
         const delay = new Promise((_, reject) => {
@@ -3233,6 +3294,10 @@ async function processTranslation() {
     }
 
     // 3. 【注意】以下代码在摘要生成完成后才执行
+    // 再次确保翻译卡片可见（摘要生成期间 body class 可能被外部脚本覆盖）
+    if (window._trVisible && !document.body.classList.contains('zh-show-tr')) {
+        document.body.classList.add('zh-show-tr');
+    }
     const nodes = initialNodes.length ? initialNodes : collectTranslationNodes(richTextContainer);
     const sysTr = `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。
 只翻译 CONTENT_TO_TRANSLATE_ONLY_BEGIN 和 CONTENT_TO_TRANSLATE_ONLY_END 之间的内容。
@@ -3362,7 +3427,7 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
 
     function loadExpressionBook() {
         try {
-            const raw = localStorage.getItem(EXPRESSION_BOOK_KEY);
+            const raw = crossOriginGet(EXPRESSION_BOOK_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             return Array.isArray(parsed) ? parsed : [];
         } catch (err) {
@@ -3374,11 +3439,11 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
     function saveExpressionBook(items) {
         const safeItems = (Array.isArray(items) ? items : []).slice(0, EXPRESSION_BOOK_MAX);
         try {
-            localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems));
+            crossOriginSet(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems));
             return true;
         } catch (err) {
             try {
-                localStorage.setItem(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(EXPRESSION_BOOK_MAX / 2))));
+                crossOriginSet(EXPRESSION_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(EXPRESSION_BOOK_MAX / 2))));
                 return true;
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：表达本写入失败', innerErr);
@@ -3549,7 +3614,7 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
 // ═══════════════════════════════════════════════════════════
     function loadRadarReportBook() {
         try {
-            const raw = localStorage.getItem(RADAR_REPORT_BOOK_KEY);
+            const raw = crossOriginGet(RADAR_REPORT_BOOK_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             return Array.isArray(parsed) ? parsed : [];
         } catch (err) {
@@ -3561,11 +3626,11 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
     function saveRadarReportBook(items) {
         const safeItems = (Array.isArray(items) ? items : []).slice(0, RADAR_REPORT_BOOK_MAX);
         try {
-            localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems));
+            crossOriginSet(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems));
             return true;
         } catch (err) {
             try {
-                localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(RADAR_REPORT_BOOK_MAX / 2))));
+                crossOriginSet(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(RADAR_REPORT_BOOK_MAX / 2))));
                 return true;
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：阅读笔记本写入失败', innerErr);
@@ -4941,6 +5006,13 @@ ${page.xhtml}
             startArticleAdCleanup();
 
             ensureImmersiveStyle();
+
+            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏（React 可能在脚本执行后重新渲染这些元素）
+            document.querySelectorAll('.AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar').forEach(el => {
+                el.style.display = 'none';
+                el.classList.add('zh-hidden-by-immersive');
+            });
+
             createQuestionToolsPanel();
 
             setupImageToggles();
@@ -4948,8 +5020,15 @@ ${page.xhtml}
             window._isImmersive = true;
 
             if (config.autoSum || config.autoTr) {
-                const translateBtn = document.getElementById('zh-translate-btn');
-                if (translateBtn) translateBtn.click();
+                const triggerAutoTranslate = () => {
+                    const translateBtn = document.getElementById('zh-translate-btn');
+                    if (translateBtn) translateBtn.click();
+                };
+                if (document.readyState === 'complete') {
+                    setTimeout(triggerAutoTranslate, 800);
+                } else {
+                    window.addEventListener('load', () => setTimeout(triggerAutoTranslate, 800), { once: true });
+                }
             }
 
             logCurrentPageReadingRecord();
@@ -4985,10 +5064,10 @@ ${page.xhtml}
     }
 
     function getAnswerKey(item, index) {
-        const metaUrl = item.querySelector('meta[itemprop="url"]')?.content;
-        if (metaUrl) return metaUrl;
         const answerLink = item.querySelector('a[href*="/answer/"]')?.href;
         if (answerLink) return answerLink;
+        const metaUrl = item.querySelector('meta[itemprop="url"]')?.content;
+        if (metaUrl && /\/answer\//.test(metaUrl)) return metaUrl;
         const zop = item.getAttribute('data-zop');
         if (zop) {
             try {
@@ -5623,7 +5702,14 @@ ${page.xhtml}
                 createQuestionToolsPanel();
                 window._isImmersive = true;
                 renderQuestionAnswer(0, true);
-                if (config.autoSum || config.autoTr) document.getElementById('zh-translate-btn')?.click();
+                if (config.autoSum || config.autoTr) {
+                    const triggerAutoTranslate = () => document.getElementById('zh-translate-btn')?.click();
+                    if (document.readyState === 'complete') {
+                        setTimeout(triggerAutoTranslate, 800);
+                    } else {
+                        window.addEventListener('load', () => setTimeout(triggerAutoTranslate, 800), { once: true });
+                    }
+                }
                 logCurrentPageReadingRecord();
                 return;
             }
@@ -6163,11 +6249,11 @@ ${page.xhtml}
     }
 
     function getHomeLayout() {
-        return localStorage.getItem('zh-home-layout') || 'double';
+        return crossOriginGet('zh-home-layout') || 'double';
     }
 
     function setHomeLayout(layout) {
-        localStorage.setItem('zh-home-layout', layout);
+        crossOriginSet('zh-home-layout', layout);
     }
 
     function renderHomeGroupToolbar(wrapper) {
@@ -6319,13 +6405,13 @@ ${page.xhtml}
 
     function loadToReadList() {
         try {
-            const raw = localStorage.getItem(TOREAD_LIST_KEY);
+            const raw = crossOriginGet(TOREAD_LIST_KEY);
             return raw ? JSON.parse(raw) : [];
         } catch (e) { return []; }
     }
 
     function saveToReadList(list) {
-        localStorage.setItem(TOREAD_LIST_KEY, JSON.stringify((list || []).slice(0, TOREAD_MAX)));
+        crossOriginSet(TOREAD_LIST_KEY, JSON.stringify((list || []).slice(0, TOREAD_MAX)));
     }
 
     function isInToReadList(url) {
@@ -6903,11 +6989,11 @@ ${page.xhtml}
     }
 
     function getFollowLayout() {
-        return localStorage.getItem('zh-follow-layout') || 'single';
+        return crossOriginGet('zh-follow-layout') || 'single';
     }
 
     function setFollowLayout(layout) {
-        localStorage.setItem('zh-follow-layout', layout);
+        crossOriginSet('zh-follow-layout', layout);
     }
 
     function renderFollowGroupToolbar(wrapper) {
@@ -7510,12 +7596,43 @@ ${page.xhtml}
         return scored;
     }
 
+    const READING_RECORDS_GM_KEY = 'zh-immersive-reading-records-v1';
+    const READING_RECORDS_GM_MAX = 500;
+
+    function _gmLoadReadingRecords() {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const raw = GM_getValue(READING_RECORDS_GM_KEY, null);
+                if (raw) return JSON.parse(raw);
+            }
+        } catch (e) {}
+        return [];
+    }
+
+    function _gmSaveReadingRecords(records) {
+        try {
+            if (typeof GM_setValue === 'function') {
+                const trimmed = records.slice(0, READING_RECORDS_GM_MAX);
+                GM_setValue(READING_RECORDS_GM_KEY, JSON.stringify(trimmed));
+            }
+        } catch (e) {}
+    }
+
+    function _gmPushReadingRecord(record) {
+        const records = _gmLoadReadingRecords();
+        const idx = records.findIndex(r => r.url === record.url);
+        if (idx >= 0) records.splice(idx, 1);
+        records.unshift(record);
+        _gmSaveReadingRecords(records);
+    }
+
     async function addReadingRecord(record) {
         const db = await openWikiCardsDB();
         const recordToSave = {
             ...record,
             readAt: record.readAt || new Date().toISOString()
         };
+        _gmPushReadingRecord(recordToSave);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).put(recordToSave);
@@ -7526,6 +7643,7 @@ ${page.xhtml}
 
     async function updateReadingProgress(url, progress) {
         const db = await openWikiCardsDB();
+        const next = Math.max(0, Math.min(100, Math.round(progress)));
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             const store = tx.objectStore(READING_RECORDS_STORE);
@@ -7533,10 +7651,10 @@ ${page.xhtml}
             getReq.onsuccess = () => {
                 const existing = getReq.result;
                 if (!existing) { resolve(); return; }
-                const next = Math.max(0, Math.min(100, Math.round(progress)));
                 if (next <= (existing.progress || 0)) { resolve(); return; }
                 existing.progress = next;
                 store.put(existing);
+                _gmPushReadingRecord(existing);
             };
             getReq.onerror = () => reject(new Error('读取阅读记录失败'));
             tx.oncomplete = () => resolve();
@@ -7548,20 +7666,42 @@ ${page.xhtml}
         const db = await openWikiCardsDB();
         return new Promise((resolve, reject) => {
             try {
-                const tx = db.transaction(READING_RECORDS_STORE, 'readonly');
-                const req = tx.objectStore(READING_RECORDS_STORE).getAll();
+                const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+                const store = tx.objectStore(READING_RECORDS_STORE);
+                const req = store.getAll();
                 req.onsuccess = () => {
                     try {
-                        const results = req.result || [];
+                        const local = req.result || [];
+                        const localMap = new Map(local.map(r => [r.url, r]));
+                        const gmRecords = _gmLoadReadingRecords();
+                        let merged = false;
+                        for (const gr of gmRecords) {
+                            if (!gr.url) continue;
+                            if (!localMap.has(gr.url)) {
+                                store.put(gr);
+                                localMap.set(gr.url, gr);
+                                merged = true;
+                            } else {
+                                const existing = localMap.get(gr.url);
+                                if ((gr.progress || 0) > (existing.progress || 0)) {
+                                    const updated = { ...existing, progress: gr.progress };
+                                    store.put(updated);
+                                    localMap.set(gr.url, updated);
+                                    merged = true;
+                                }
+                            }
+                        }
+                        const results = Array.from(localMap.values());
                         results.sort((a, b) => {
                             const dateA = a && a.readAt ? String(a.readAt) : '';
                             const dateB = b && b.readAt ? String(b.readAt) : '';
                             return dateB.localeCompare(dateA);
                         });
+                        if (merged) _gmSaveReadingRecords(results.slice(0, READING_RECORDS_GM_MAX));
                         resolve(results);
                     } catch (sortErr) {
                         console.error('排序阅读历史失败:', sortErr);
-                        resolve(req.result || []); // 即使排序失败也必须 resolve，绝不能无限期挂起
+                        resolve(req.result || []);
                     }
                 };
                 req.onerror = () => reject(new Error('读取阅读历史失败'));
@@ -7573,6 +7713,8 @@ ${page.xhtml}
 
     async function deleteReadingRecord(url) {
         const db = await openWikiCardsDB();
+        const gmRecords = _gmLoadReadingRecords().filter(r => r.url !== url);
+        _gmSaveReadingRecords(gmRecords);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).delete(url);
@@ -7583,6 +7725,7 @@ ${page.xhtml}
 
     async function clearAllReadingRecords() {
         const db = await openWikiCardsDB();
+        _gmSaveReadingRecords([]);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).clear();
@@ -7627,7 +7770,7 @@ ${page.xhtml}
 
     function loadWikiHistory() {
         try {
-            const raw = localStorage.getItem(WIKI_HISTORY_KEY);
+            const raw = crossOriginGet(WIKI_HISTORY_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             if (!Array.isArray(parsed)) return [];
             const now = new Date().toISOString();
@@ -7656,7 +7799,8 @@ ${page.xhtml}
 
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
-                localStorage.setItem(WIKI_HISTORY_KEY, JSON.stringify(records));
+                const json = JSON.stringify(records);
+                crossOriginSet(WIKI_HISTORY_KEY, json);
                 wikiState.history = records;
                 return true;
             } catch (err) {
@@ -9923,6 +10067,7 @@ ${page.xhtml}
             Array.from(wrapper.children).forEach(child => {
                 if (child.id !== 'zh-space-container') {
                     siblingCount++;
+                    child.classList.remove('zh-space-hidden');
                     if (child.hasAttribute('data-zh-space-orig-display')) {
                         child.style.display = child.getAttribute('data-zh-space-orig-display');
                         child.removeAttribute('data-zh-space-orig-display');
@@ -10044,6 +10189,7 @@ ${page.xhtml}
                     child.setAttribute('data-zh-space-orig-display', child.style.display || '');
                 }
                 child.style.display = 'none';
+                child.classList.add('zh-space-hidden');
             }
         });
 
@@ -10063,8 +10209,8 @@ ${page.xhtml}
         sidebarTitle.className = 'zh-space-sidebar-title';
         sidebarTitle.style.cssText = 'display:flex; flex-direction:column; align-items:center; text-align:center; padding:18px 10px; border-bottom:1px dashed var(--zh-border); margin-bottom:15px; gap:10px;';
         
-        const cachedAvatar = localStorage.getItem('zh-user-avatar') || '';
-        const cachedName = localStorage.getItem('zh-user-name') || '个人空间';
+        const cachedAvatar = crossOriginGet('zh-user-avatar') || '';
+        const cachedName = crossOriginGet('zh-user-name') || '个人空间';
 
         sidebarTitle.innerHTML = `
             <img class="zh-space-avatar" src="${cachedAvatar || 'https://pic1.zhimg.com/v2-ab97017482aa2a5d112b2d282c6b3e39_l.jpg'}" style="width:56px; height:56px; border-radius:50%; border:2px solid var(--zh-accent); box-shadow:0 4px 10px rgba(0,0,0,0.1); object-fit:cover; display:block;" />
@@ -10810,12 +10956,31 @@ ${page.xhtml}
 
     async function fetchZhihuProfile() {
         try {
-            const res = await fetch('https://www.zhihu.com/api/v4/me');
-            if (!res.ok) throw new Error('Zhihu API Error');
-            const data = await res.json();
+            const url = 'https://www.zhihu.com/api/v4/me';
+            const xhr = getUserscriptXHR();
+            let data;
+            if (xhr && !url.startsWith(location.origin)) {
+                data = await new Promise((resolve, reject) => {
+                    xhr({
+                        method: 'GET', url, timeout: 10000, anonymous: false,
+                        headers: { 'Accept': 'application/json' },
+                        onload: res => {
+                            if (res.status >= 200 && res.status < 300) {
+                                try { resolve(JSON.parse(res.responseText)); } catch (e) { reject(e); }
+                            } else { reject(new Error(`HTTP ${res.status}`)); }
+                        },
+                        onerror: () => reject(new Error('network error')),
+                        ontimeout: () => reject(new Error('timeout'))
+                    });
+                });
+            } else {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Zhihu API Error');
+                data = await res.json();
+            }
             if (data && data.avatar_url) {
-                localStorage.setItem('zh-user-avatar', data.avatar_url);
-                localStorage.setItem('zh-user-name', data.name || '个人空间');
+                crossOriginSet('zh-user-avatar', data.avatar_url);
+                crossOriginSet('zh-user-name', data.name || '个人空间');
                 return data;
             }
         } catch (e) {
@@ -11250,6 +11415,20 @@ function enterImmersive() {
         stopArticleAdCleanup();
         removeCollectOverlay();
         restoreLiveMount();
+
+        // 0. 如果在个人空间内直接退出沉浸模式，先清理个人空间对 wrapper 子元素的隐藏
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (wrapper) {
+            Array.from(wrapper.children).forEach(child => {
+                child.classList.remove('zh-space-hidden');
+                if (child.hasAttribute('data-zh-space-orig-display')) {
+                    child.style.display = child.getAttribute('data-zh-space-orig-display');
+                    child.removeAttribute('data-zh-space-orig-display');
+                }
+            });
+            const spaceContainer = document.getElementById('zh-space-container');
+            if (spaceContainer) spaceContainer.remove();
+        }
 
         // 1. 顺着咱们进来时打下的占位符，把文章主体和操作栏送回去
         const articlePlaceholder = document.getElementById('zh-article-placeholder');

@@ -224,6 +224,20 @@ function enterImmersive() {
         removeCollectOverlay();
         restoreLiveMount();
 
+        // 0. 如果在个人空间内直接退出沉浸模式，先清理个人空间对 wrapper 子元素的隐藏
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (wrapper) {
+            Array.from(wrapper.children).forEach(child => {
+                child.classList.remove('zh-space-hidden');
+                if (child.hasAttribute('data-zh-space-orig-display')) {
+                    child.style.display = child.getAttribute('data-zh-space-orig-display');
+                    child.removeAttribute('data-zh-space-orig-display');
+                }
+            });
+            const spaceContainer = document.getElementById('zh-space-container');
+            if (spaceContainer) spaceContainer.remove();
+        }
+
         // 1. 顺着咱们进来时打下的占位符，把文章主体和操作栏送回去
         const articlePlaceholder = document.getElementById('zh-article-placeholder');
         if (_articleNode && articlePlaceholder && articlePlaceholder.parentNode) {

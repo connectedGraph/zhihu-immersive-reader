@@ -1,6 +1,6 @@
     function loadRadarReportBook() {
         try {
-            const raw = localStorage.getItem(RADAR_REPORT_BOOK_KEY);
+            const raw = crossOriginGet(RADAR_REPORT_BOOK_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
             return Array.isArray(parsed) ? parsed : [];
         } catch (err) {
@@ -12,11 +12,11 @@
     function saveRadarReportBook(items) {
         const safeItems = (Array.isArray(items) ? items : []).slice(0, RADAR_REPORT_BOOK_MAX);
         try {
-            localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems));
+            crossOriginSet(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems));
             return true;
         } catch (err) {
             try {
-                localStorage.setItem(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(RADAR_REPORT_BOOK_MAX / 2))));
+                crossOriginSet(RADAR_REPORT_BOOK_KEY, JSON.stringify(safeItems.slice(0, Math.floor(RADAR_REPORT_BOOK_MAX / 2))));
                 return true;
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：阅读笔记本写入失败', innerErr);

@@ -40,7 +40,7 @@
 
     function loadTranslationCache() {
         try {
-            const raw = localStorage.getItem(TRANSLATION_CACHE_KEY);
+            const raw = crossOriginGet(TRANSLATION_CACHE_KEY);
             const parsed = raw ? JSON.parse(raw) : null;
             return parsed && typeof parsed === 'object'
                 ? { entries: parsed.entries || {}, order: Array.isArray(parsed.order) ? parsed.order : [] }
@@ -65,14 +65,14 @@
             delete entries[oldKey];
         }
         try {
-            localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+            crossOriginSet(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
         } catch (err) {
             while (order.length > Math.floor(TRANSLATION_CACHE_MAX / 2)) {
                 const oldKey = order.shift();
                 delete entries[oldKey];
             }
             try {
-                localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
+                crossOriginSet(TRANSLATION_CACHE_KEY, JSON.stringify({ entries, order }));
             } catch (innerErr) {
                 console.warn('知乎沉浸式阅读：翻译缓存写入失败', innerErr);
             }

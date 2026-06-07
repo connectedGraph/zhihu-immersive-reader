@@ -482,11 +482,11 @@
     }
 
     function getHomeLayout() {
-        return localStorage.getItem('zh-home-layout') || 'double';
+        return crossOriginGet('zh-home-layout') || 'double';
     }
 
     function setHomeLayout(layout) {
-        localStorage.setItem('zh-home-layout', layout);
+        crossOriginSet('zh-home-layout', layout);
     }
 
     function renderHomeGroupToolbar(wrapper) {
@@ -638,13 +638,13 @@
 
     function loadToReadList() {
         try {
-            const raw = localStorage.getItem(TOREAD_LIST_KEY);
+            const raw = crossOriginGet(TOREAD_LIST_KEY);
             return raw ? JSON.parse(raw) : [];
         } catch (e) { return []; }
     }
 
     function saveToReadList(list) {
-        localStorage.setItem(TOREAD_LIST_KEY, JSON.stringify((list || []).slice(0, TOREAD_MAX)));
+        crossOriginSet(TOREAD_LIST_KEY, JSON.stringify((list || []).slice(0, TOREAD_MAX)));
     }
 
     function isInToReadList(url) {

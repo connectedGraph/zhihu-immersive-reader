@@ -36,11 +36,8 @@
 
     function loadApiProfiles() {
         try {
-            let raw = null;
-            if (typeof GM_getValue === 'function') raw = GM_getValue(API_PROFILES_KEY, null);
-            if (!raw) raw = localStorage.getItem(API_PROFILES_KEY);
+            const raw = crossOriginGet(API_PROFILES_KEY);
             const store = normalizeApiProfileStore(raw ? JSON.parse(raw) : null);
-            if (typeof GM_setValue === 'function' && raw) GM_setValue(API_PROFILES_KEY, typeof raw === 'string' ? raw : JSON.stringify(store));
             return store;
         } catch (err) {
             console.warn('知乎沉浸式阅读：API 配置组读取失败', err);
@@ -51,8 +48,7 @@
     function saveApiProfiles(store) {
         const normalized = normalizeApiProfileStore(store);
         const json = JSON.stringify(normalized);
-        if (typeof GM_setValue === 'function') GM_setValue(API_PROFILES_KEY, json);
-        localStorage.setItem(API_PROFILES_KEY, json);
+        crossOriginSet(API_PROFILES_KEY, json);
         return normalized;
     }
 

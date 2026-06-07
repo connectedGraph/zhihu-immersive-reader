@@ -172,6 +172,13 @@
             startArticleAdCleanup();
 
             ensureImmersiveStyle();
+
+            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏（React 可能在脚本执行后重新渲染这些元素）
+            document.querySelectorAll('.AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar').forEach(el => {
+                el.style.display = 'none';
+                el.classList.add('zh-hidden-by-immersive');
+            });
+
             createQuestionToolsPanel();
 
             setupImageToggles();
@@ -179,8 +186,15 @@
             window._isImmersive = true;
 
             if (config.autoSum || config.autoTr) {
-                const translateBtn = document.getElementById('zh-translate-btn');
-                if (translateBtn) translateBtn.click();
+                const triggerAutoTranslate = () => {
+                    const translateBtn = document.getElementById('zh-translate-btn');
+                    if (translateBtn) translateBtn.click();
+                };
+                if (document.readyState === 'complete') {
+                    setTimeout(triggerAutoTranslate, 800);
+                } else {
+                    window.addEventListener('load', () => setTimeout(triggerAutoTranslate, 800), { once: true });
+                }
             }
 
             logCurrentPageReadingRecord();

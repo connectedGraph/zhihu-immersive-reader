@@ -261,12 +261,43 @@
         return scored;
     }
 
+    const READING_RECORDS_GM_KEY = 'zh-immersive-reading-records-v1';
+    const READING_RECORDS_GM_MAX = 500;
+
+    function _gmLoadReadingRecords() {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const raw = GM_getValue(READING_RECORDS_GM_KEY, null);
+                if (raw) return JSON.parse(raw);
+            }
+        } catch (e) {}
+        return [];
+    }
+
+    function _gmSaveReadingRecords(records) {
+        try {
+            if (typeof GM_setValue === 'function') {
+                const trimmed = records.slice(0, READING_RECORDS_GM_MAX);
+                GM_setValue(READING_RECORDS_GM_KEY, JSON.stringify(trimmed));
+            }
+        } catch (e) {}
+    }
+
+    function _gmPushReadingRecord(record) {
+        const records = _gmLoadReadingRecords();
+        const idx = records.findIndex(r => r.url === record.url);
+        if (idx >= 0) records.splice(idx, 1);
+        records.unshift(record);
+        _gmSaveReadingRecords(records);
+    }
+
     async function addReadingRecord(record) {
         const db = await openWikiCardsDB();
         const recordToSave = {
             ...record,
             readAt: record.readAt || new Date().toISOString()
         };
+        _gmPushReadingRecord(recordToSave);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).put(recordToSave);
@@ -277,6 +308,7 @@
 
     async function updateReadingProgress(url, progress) {
         const db = await openWikiCardsDB();
+        const next = Math.max(0, Math.min(100, Math.round(progress)));
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             const store = tx.objectStore(READING_RECORDS_STORE);
@@ -284,10 +316,10 @@
             getReq.onsuccess = () => {
                 const existing = getReq.result;
                 if (!existing) { resolve(); return; }
-                const next = Math.max(0, Math.min(100, Math.round(progress)));
                 if (next <= (existing.progress || 0)) { resolve(); return; }
                 existing.progress = next;
                 store.put(existing);
+                _gmPushReadingRecord(existing);
             };
             getReq.onerror = () => reject(new Error('读取阅读记录失败'));
             tx.oncomplete = () => resolve();
@@ -299,20 +331,42 @@
         const db = await openWikiCardsDB();
         return new Promise((resolve, reject) => {
             try {
-                const tx = db.transaction(READING_RECORDS_STORE, 'readonly');
-                const req = tx.objectStore(READING_RECORDS_STORE).getAll();
+                const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
+                const store = tx.objectStore(READING_RECORDS_STORE);
+                const req = store.getAll();
                 req.onsuccess = () => {
                     try {
-                        const results = req.result || [];
+                        const local = req.result || [];
+                        const localMap = new Map(local.map(r => [r.url, r]));
+                        const gmRecords = _gmLoadReadingRecords();
+                        let merged = false;
+                        for (const gr of gmRecords) {
+                            if (!gr.url) continue;
+                            if (!localMap.has(gr.url)) {
+                                store.put(gr);
+                                localMap.set(gr.url, gr);
+                                merged = true;
+                            } else {
+                                const existing = localMap.get(gr.url);
+                                if ((gr.progress || 0) > (existing.progress || 0)) {
+                                    const updated = { ...existing, progress: gr.progress };
+                                    store.put(updated);
+                                    localMap.set(gr.url, updated);
+                                    merged = true;
+                                }
+                            }
+                        }
+                        const results = Array.from(localMap.values());
                         results.sort((a, b) => {
                             const dateA = a && a.readAt ? String(a.readAt) : '';
                             const dateB = b && b.readAt ? String(b.readAt) : '';
                             return dateB.localeCompare(dateA);
                         });
+                        if (merged) _gmSaveReadingRecords(results.slice(0, READING_RECORDS_GM_MAX));
                         resolve(results);
                     } catch (sortErr) {
                         console.error('排序阅读历史失败:', sortErr);
-                        resolve(req.result || []); // 即使排序失败也必须 resolve，绝不能无限期挂起
+                        resolve(req.result || []);
                     }
                 };
                 req.onerror = () => reject(new Error('读取阅读历史失败'));
@@ -324,6 +378,8 @@
 
     async function deleteReadingRecord(url) {
         const db = await openWikiCardsDB();
+        const gmRecords = _gmLoadReadingRecords().filter(r => r.url !== url);
+        _gmSaveReadingRecords(gmRecords);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).delete(url);
@@ -334,6 +390,7 @@
 
     async function clearAllReadingRecords() {
         const db = await openWikiCardsDB();
+        _gmSaveReadingRecords([]);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(READING_RECORDS_STORE, 'readwrite');
             tx.objectStore(READING_RECORDS_STORE).clear();

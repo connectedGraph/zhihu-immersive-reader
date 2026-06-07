@@ -3,7 +3,7 @@
     // 启动时把用户自定义主题追加进 THEMES（mutate，不重新赋值 const）
     function loadCustomThemes() {
         try {
-            const raw = localStorage.getItem(CUSTOM_THEMES_KEY);
+            const raw = crossOriginGet(CUSTOM_THEMES_KEY);
             const list = raw ? JSON.parse(raw) : [];
             if (Array.isArray(list)) {
                 list.forEach(t => {
@@ -16,7 +16,7 @@
 
     function saveCustomThemes() {
         const custom = THEMES.filter(t => t.custom);
-        try { localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(custom)); } catch (e) {}
+        try { crossOriginSet(CUSTOM_THEMES_KEY, JSON.stringify(custom)); } catch (e) {}
     }
 
     function addCustomTheme(name, vars) {
