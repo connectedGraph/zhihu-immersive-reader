@@ -142,6 +142,12 @@ node build.js
 
 ## 更新日志
 
+### 2026-06-07 · v5.0.3
+
+- **fix**: AI 翻译/摘要 block 支持 MathJax 公式渲染——`sanitizeLLMHTML` 白名单扩展 MathML 标签（`<math>`, `<mrow>`, `<mi>` 等）和数学相关 class（`ztext-math`, `katex`, `MathJax*`）
+- **fix**: 翻译卡片渲染后自动触发知乎页面 MathJax typeset（兼容 v2/v3），确保公式正常排版
+- **chore**: 移除无用的 `src/meta.js`，版本号统一由 `note.js` 管理
+
 ### 2026-06-07 · v5.0.2
 
 - **fix**: 修复问答页回答 URL 抓取错误——`getAnswerKey` 优先取到了作者主页 `meta[itemprop="url"]`(属于 Person schema) 而非回答链接，导致待读/历史/Wiki 记录的 URL 指向个人主页；现优先匹配 `a[href*="/answer/"]`
