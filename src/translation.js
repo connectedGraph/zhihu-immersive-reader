@@ -119,6 +119,7 @@ function cleanTranslationOutput(content) {
 
 function renderParagraphTranslationCard(card, translation, regenerateHandler) {
     card.innerHTML = sanitizeLLMHTML(translation);
+    triggerMathJaxTypeset(card);
     const actions = document.createElement('div');
     actions.className = 'zh-tr-actions';
 
