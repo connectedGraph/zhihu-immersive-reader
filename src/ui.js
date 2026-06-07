@@ -74,9 +74,12 @@
         const allowedTags = new Set([
             'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TH', 'TD', 'CAPTION', 'COLGROUP', 'COL',
             'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'CODE', 'PRE', 'BLOCKQUOTE',
-            'UL', 'OL', 'LI', 'SPAN', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SUP', 'SUB'
+            'UL', 'OL', 'LI', 'SPAN', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SUP', 'SUB',
+            'MATH', 'SEMANTICS', 'MROW', 'MI', 'MO', 'MN', 'MSUP', 'MSUB', 'MFRAC', 'MSQRT',
+            'MOVER', 'MUNDER', 'MUNDEROVER', 'MTABLE', 'MTR', 'MTD', 'MTEXT', 'MSPACE', 'ANNOTATION'
         ]);
-        const allowedAttrs = new Set(['colspan', 'rowspan', 'scope', 'align']);
+        const allowedAttrs = new Set(['colspan', 'rowspan', 'scope', 'align', 'class', 'data-tex', 'encoding']);
+        const allowedClasses = /^(ztext-math|math|katex|MathJax)/;
         const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
         const unsafeNodes = [];
 
@@ -93,10 +96,22 @@
                     el.removeAttribute(attr.name);
                 }
             });
+            if (el.hasAttribute('class')) {
+                const classes = el.getAttribute('class').split(/\s+/).filter(c => allowedClasses.test(c));
+                if (classes.length) el.setAttribute('class', classes.join(' '));
+                else el.removeAttribute('class');
+            }
         }
 
         unsafeNodes.forEach(el => el.replaceWith(document.createTextNode(el.textContent || '')));
         return template.innerHTML;
+    }
+
+    function triggerMathJaxTypeset(el) {
+        if (window.MathJax) {
+            if (MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {});
+            else if (MathJax.Hub) MathJax.Hub.Queue(['Typeset', MathJax.Hub, el]);
+        }
     }
 
     function getImagePlaceholder(img) {
