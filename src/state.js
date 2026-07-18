@@ -62,12 +62,17 @@
         return {};
     }
     let config = Object.assign({}, DEFAULT_CONFIG, _loadConfigFromStorage());
+    config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+    config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
+    let _translationPromptCursor = 0;
 
     if (typeof GM_addValueChangeListener === 'function') {
         GM_addValueChangeListener('zh-immersive-config', (name, oldVal, newVal, remote) => {
             if (!remote || !newVal) return;
             try {
                 config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(newVal));
+                config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+                config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
                 applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
                 if (window._isImmersive) setupImageToggles();
                 if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
@@ -81,6 +86,8 @@
         if (event.key !== 'zh-immersive-config' || !event.newValue) return;
         try {
             config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(event.newValue));
+            config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+            config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
             if (typeof GM_setValue === 'function') GM_setValue('zh-immersive-config', event.newValue);
             applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
             if (window._isImmersive) setupImageToggles();

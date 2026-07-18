@@ -7,6 +7,8 @@ const SETTINGS_MODAL_HTML = (cfg) => {
     const fontPreset = FONT_PRESETS.some(item => item.id === cfg.fontPreset) ? cfg.fontPreset : 'classic-serif';
     const customFontSource = ['none', 'url', 'file'].includes(cfg.customFontSource) ? cfg.customFontSource : 'none';
     const homeFeedMode = cfg.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    const translationPrompts = normalizeTranslationPromptLibrary(cfg.translationPrompts);
+    const translationContextParagraphs = Math.max(0, Math.min(3, Number(cfg.translationContextParagraphs) || 0));
     return `
     <div class="zh-settings-page">
         <aside class="zh-settings-sidebar" aria-label="设置分类">
@@ -46,6 +48,39 @@ const SETTINGS_MODAL_HTML = (cfg) => {
                             <span>阅读笔记兴趣标签</span>
                             <input type="text" id="zh-cfg-radar-tags" value="${escapeSettingsAttr(cfg.radarInterestTags || '')}" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
                         </label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>翻译提示词库</h3>
+                        <p class="zh-settings-note">启用的提示词会按顺序循环用于段落翻译。提示词切换后会使用独立缓存；可在下方直接编辑。每段译文控制在 100 words 内。</p>
+                        <div class="zh-settings-form-grid">
+                            <label class="zh-settings-field">
+                                <span>上下文段落</span>
+                                <select id="zh-cfg-translation-context">
+                                    <option value="0" ${translationContextParagraphs === 0 ? 'selected' : ''}>不加入</option>
+                                    <option value="1" ${translationContextParagraphs === 1 ? 'selected' : ''}>前后各 1 段</option>
+                                    <option value="2" ${translationContextParagraphs === 2 ? 'selected' : ''}>前后各 2 段</option>
+                                    <option value="3" ${translationContextParagraphs === 3 ? 'selected' : ''}>前后各 3 段</option>
+                                </select>
+                                <small>仅供模型理解语气和上下文，不会要求翻译这些段落。</small>
+                            </label>
+                        </div>
+                        <div id="zh-translation-prompt-list" class="zh-translation-prompt-list">
+                            ${translationPrompts.map((item, index) => `
+                                <div class="zh-translation-prompt-row" data-prompt-index="${index}">
+                                    <div class="zh-translation-prompt-toolbar">
+                                        <label class="zh-settings-toggle zh-translation-prompt-enabled"><span><b>启用轮换</b></span><input type="checkbox" class="zh-translation-prompt-check" ${item.enabled !== false ? 'checked' : ''}><i></i></label>
+                                        <input type="text" class="zh-translation-prompt-name" value="${escapeSettingsAttr(item.name)}" placeholder="提示词名称">
+                                        <button type="button" class="zh-inline-btn zh-translation-prompt-delete" title="删除提示词">删除</button>
+                                    </div>
+                                    <textarea class="zh-translation-prompt-text" rows="4" placeholder="使用 {{targetLang}} 代表目标语言">${escapeSettingsAttr(item.prompt)}</textarea>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <button type="button" id="zh-add-translation-prompt" class="zh-inline-btn">添加提示词</button>
+                            <small>建议每段提示词保持简洁；系统会自动补充边界、表格和代码保护规则。</small>
+                        </div>
                     </div>
                     <div class="zh-settings-divider"></div>
                     <div class="zh-settings-toggle-list">

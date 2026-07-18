@@ -79,14 +79,19 @@
         }
     }
 
-    function makeTranslationCacheKey(type, content) {
-        return [
+    function makeTranslationCacheKey(type, content, prompt = null) {
+        const promptSignature = type === 'block'
+            ? (prompt?.id || 'default') + ':' + stableHash(prompt?.prompt || '') + ':' + String(config.translationContextParagraphs || 0)
+            : '';
+        const parts = [
             type,
             config.apiHost || '',
             config.apiModel || '',
-            config.targetLang || '',
-            stableHash(content)
-        ].join('::');
+            config.targetLang || ''
+        ];
+        if (type === 'block') parts.push(promptSignature);
+        parts.push(stableHash(content));
+        return parts.join('::');
     }
 
     function normalizeTranslationCacheText(text) {
@@ -106,8 +111,8 @@
         return normalizeTranslationCacheText(fullText);
     }
 
-    function getTranslationCache(type, content) {
-        const key = makeTranslationCacheKey(type, content);
+    function getTranslationCache(type, content, prompt = null) {
+        const key = makeTranslationCacheKey(type, content, prompt);
         if (_translationMemoryCache.has(key)) {
             console.info(`[Zhihu TR Cache] memory hit: ${type}`);
             return _translationMemoryCache.get(key);
@@ -123,10 +128,10 @@
         return value;
     }
 
-    function setTranslationCache(type, content, value) {
+    function setTranslationCache(type, content, value, prompt = null) {
         if (!value) return;
         const cache = loadTranslationCache();
-        const key = makeTranslationCacheKey(type, content);
+        const key = makeTranslationCacheKey(type, content, prompt);
         cache.entries[key] = { value, savedAt: Date.now() };
         cache.order = (cache.order || []).filter(item => item !== key);
         cache.order.push(key);

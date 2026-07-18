@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.10
+// @version      5.1.1
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -103,6 +103,46 @@ const FONT_PRESETS = [
     }
 ];
 
+// 翻译提示词库。{{targetLang}} 会在请求时替换为当前目标语言。
+const DEFAULT_TRANSLATION_PROMPTS = [
+    {
+        id: 'conservative-document',
+        name: 'Conservative document translation',
+        prompt: 'Translate the source into {{targetLang}} faithfully and clearly. Use a formal, neutral tone. Preserve meaning, facts, structure, tables, formulas, and code. Do not add, omit, or explain. Keep each output paragraph within 100 words. Return only the translation.',
+        enabled: true
+    },
+    {
+        id: 'native-internet',
+        name: 'Native internet style',
+        prompt: 'Translate into natural, fluent {{targetLang}} as a native speaker would write online. Preserve the original meaning and intent, but improve rhythm, idioms, and readability. Lightly adapt expressions for the target culture. Keep each output paragraph within 100 words. Do not add facts or commentary. Return only the translation.',
+        enabled: true
+    },
+    {
+        id: 'bold-native-internet',
+        name: 'Bold and punchy native internet style',
+        prompt: 'Translate into bold, highly natural {{targetLang}} with a strong internet voice. Use punchy rhythm, idiomatic phrasing, and light slang only when it fits. Preserve meaning and facts; never invent details. Keep each output paragraph within 100 words. Return only the translation.',
+        enabled: true
+    }
+];
+
+function normalizeTranslationPromptLibrary(value) {
+    if (!Array.isArray(value)) return DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item }));
+    return value
+        .map((item, index) => {
+            if (!item || typeof item !== 'object') return null;
+            const prompt = String(item.prompt || '').trim();
+            if (!prompt) return null;
+            return {
+                id: String(item.id || `translation-prompt-${index + 1}`),
+                name: String(item.name || `Prompt ${index + 1}`).trim() || `Prompt ${index + 1}`,
+                prompt,
+                enabled: item.enabled !== false
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 30);
+}
+
 // ----- 默认配置 -----
 const DEFAULT_CONFIG = {
     apiHost: 'https://api.deepseek.com/v1',
@@ -129,7 +169,9 @@ const DEFAULT_CONFIG = {
     customFontSource: 'none',
     customFontUrl: '',
     customFontName: '',
-    homeFeedMode: 'scroll'
+    homeFeedMode: 'scroll',
+    translationPrompts: DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item })),
+    translationContextParagraphs: 1
 };
 
 const EXPORT_HIDDEN_SELECTORS = [
@@ -626,6 +668,23 @@ const STYLE_CSS = `
     #zh-settings-modal .zh-settings-details textarea { height: auto; min-height: 112px; margin: 10px 0 8px; padding: 10px 12px; resize: vertical; font-family: Consolas, monospace; line-height: 1.5; }
     .zh-settings-list { margin-top: 14px; font-size: 12px; line-height: 1.6; }
     .zh-collections-list { max-height: 360px; overflow-y: auto; }
+    .zh-translation-prompt-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .zh-translation-prompt-row { padding: 12px; border: 1px solid var(--zh-border); border-radius: 6px; background: var(--zh-paper); }
+    .zh-translation-prompt-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .zh-translation-prompt-enabled { min-height: 34px; flex: 0 0 auto; padding: 0; border: 0; }
+    .zh-translation-prompt-enabled > span { display: none; }
+    .zh-translation-prompt-enabled i { width: 34px; height: 20px; }
+    .zh-translation-prompt-enabled i::after { width: 14px; height: 14px; }
+    .zh-translation-prompt-enabled input:checked + i::after { transform: translateX(14px); }
+    #zh-settings-modal .zh-translation-prompt-name { min-width: 0; flex: 1; height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--zh-border); border-radius: 4px; outline: 0; background: var(--zh-code); color: var(--zh-text); font-size: 12px; }
+    #zh-settings-modal .zh-translation-prompt-name:focus { border-color: var(--zh-accent); }
+    #zh-settings-modal .zh-translation-prompt-text { width: 100%; min-height: 88px; margin-top: 10px; padding: 10px; box-sizing: border-box; resize: vertical; border: 1px solid var(--zh-border); border-radius: 4px; outline: 0; background: var(--zh-code); color: var(--zh-text); font: 12px/1.6 Consolas, monospace; }
+    #zh-settings-modal .zh-translation-prompt-text:focus { border-color: var(--zh-accent); }
+    @media (max-width: 520px) {
+        .zh-translation-prompt-toolbar { flex-wrap: wrap; }
+        .zh-translation-prompt-name { order: 2; flex-basis: calc(100% - 44px); }
+        .zh-translation-prompt-delete { order: 3; }
+    }
 
     #zh-settings-modal .zh-pwd-wrap { margin: 0; }
     #zh-settings-modal .zh-eye-icon { right: 7px; width: 28px; height: 28px; padding: 5px; box-sizing: border-box; border: 0; border-radius: 4px; background: transparent; }
@@ -942,6 +1001,8 @@ const SETTINGS_MODAL_HTML = (cfg) => {
     const fontPreset = FONT_PRESETS.some(item => item.id === cfg.fontPreset) ? cfg.fontPreset : 'classic-serif';
     const customFontSource = ['none', 'url', 'file'].includes(cfg.customFontSource) ? cfg.customFontSource : 'none';
     const homeFeedMode = cfg.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    const translationPrompts = normalizeTranslationPromptLibrary(cfg.translationPrompts);
+    const translationContextParagraphs = Math.max(0, Math.min(3, Number(cfg.translationContextParagraphs) || 0));
     return `
     <div class="zh-settings-page">
         <aside class="zh-settings-sidebar" aria-label="设置分类">
@@ -981,6 +1042,39 @@ const SETTINGS_MODAL_HTML = (cfg) => {
                             <span>阅读笔记兴趣标签</span>
                             <input type="text" id="zh-cfg-radar-tags" value="${escapeSettingsAttr(cfg.radarInterestTags || '')}" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
                         </label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>翻译提示词库</h3>
+                        <p class="zh-settings-note">启用的提示词会按顺序循环用于段落翻译。提示词切换后会使用独立缓存；可在下方直接编辑。每段译文控制在 100 words 内。</p>
+                        <div class="zh-settings-form-grid">
+                            <label class="zh-settings-field">
+                                <span>上下文段落</span>
+                                <select id="zh-cfg-translation-context">
+                                    <option value="0" ${translationContextParagraphs === 0 ? 'selected' : ''}>不加入</option>
+                                    <option value="1" ${translationContextParagraphs === 1 ? 'selected' : ''}>前后各 1 段</option>
+                                    <option value="2" ${translationContextParagraphs === 2 ? 'selected' : ''}>前后各 2 段</option>
+                                    <option value="3" ${translationContextParagraphs === 3 ? 'selected' : ''}>前后各 3 段</option>
+                                </select>
+                                <small>仅供模型理解语气和上下文，不会要求翻译这些段落。</small>
+                            </label>
+                        </div>
+                        <div id="zh-translation-prompt-list" class="zh-translation-prompt-list">
+                            ${translationPrompts.map((item, index) => `
+                                <div class="zh-translation-prompt-row" data-prompt-index="${index}">
+                                    <div class="zh-translation-prompt-toolbar">
+                                        <label class="zh-settings-toggle zh-translation-prompt-enabled"><span><b>启用轮换</b></span><input type="checkbox" class="zh-translation-prompt-check" ${item.enabled !== false ? 'checked' : ''}><i></i></label>
+                                        <input type="text" class="zh-translation-prompt-name" value="${escapeSettingsAttr(item.name)}" placeholder="提示词名称">
+                                        <button type="button" class="zh-inline-btn zh-translation-prompt-delete" title="删除提示词">删除</button>
+                                    </div>
+                                    <textarea class="zh-translation-prompt-text" rows="4" placeholder="使用 {{targetLang}} 代表目标语言">${escapeSettingsAttr(item.prompt)}</textarea>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <button type="button" id="zh-add-translation-prompt" class="zh-inline-btn">添加提示词</button>
+                            <small>建议每段提示词保持简洁；系统会自动补充边界、表格和代码保护规则。</small>
+                        </div>
                     </div>
                     <div class="zh-settings-divider"></div>
                     <div class="zh-settings-toggle-list">
@@ -1269,12 +1363,17 @@ const HELP_MODAL_HTML = `
         return {};
     }
     let config = Object.assign({}, DEFAULT_CONFIG, _loadConfigFromStorage());
+    config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+    config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
+    let _translationPromptCursor = 0;
 
     if (typeof GM_addValueChangeListener === 'function') {
         GM_addValueChangeListener('zh-immersive-config', (name, oldVal, newVal, remote) => {
             if (!remote || !newVal) return;
             try {
                 config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(newVal));
+                config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+                config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
                 applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
                 if (window._isImmersive) setupImageToggles();
                 if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
@@ -1288,6 +1387,8 @@ const HELP_MODAL_HTML = `
         if (event.key !== 'zh-immersive-config' || !event.newValue) return;
         try {
             config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(event.newValue));
+            config.translationPrompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+            config.translationContextParagraphs = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
             if (typeof GM_setValue === 'function') GM_setValue('zh-immersive-config', event.newValue);
             applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
             if (window._isImmersive) setupImageToggles();
@@ -2784,14 +2885,19 @@ const HELP_MODAL_HTML = `
         }
     }
 
-    function makeTranslationCacheKey(type, content) {
-        return [
+    function makeTranslationCacheKey(type, content, prompt = null) {
+        const promptSignature = type === 'block'
+            ? (prompt?.id || 'default') + ':' + stableHash(prompt?.prompt || '') + ':' + String(config.translationContextParagraphs || 0)
+            : '';
+        const parts = [
             type,
             config.apiHost || '',
             config.apiModel || '',
-            config.targetLang || '',
-            stableHash(content)
-        ].join('::');
+            config.targetLang || ''
+        ];
+        if (type === 'block') parts.push(promptSignature);
+        parts.push(stableHash(content));
+        return parts.join('::');
     }
 
     function normalizeTranslationCacheText(text) {
@@ -2811,8 +2917,8 @@ const HELP_MODAL_HTML = `
         return normalizeTranslationCacheText(fullText);
     }
 
-    function getTranslationCache(type, content) {
-        const key = makeTranslationCacheKey(type, content);
+    function getTranslationCache(type, content, prompt = null) {
+        const key = makeTranslationCacheKey(type, content, prompt);
         if (_translationMemoryCache.has(key)) {
             console.info(`[Zhihu TR Cache] memory hit: ${type}`);
             return _translationMemoryCache.get(key);
@@ -2828,10 +2934,10 @@ const HELP_MODAL_HTML = `
         return value;
     }
 
-    function setTranslationCache(type, content, value) {
+    function setTranslationCache(type, content, value, prompt = null) {
         if (!value) return;
         const cache = loadTranslationCache();
-        const key = makeTranslationCacheKey(type, content);
+        const key = makeTranslationCacheKey(type, content, prompt);
         cache.entries[key] = { value, savedAt: Date.now() };
         cache.order = (cache.order || []).filter(item => item !== key);
         cache.order.push(key);
@@ -2839,6 +2945,7 @@ const HELP_MODAL_HTML = `
         console.info(`[Zhihu TR Cache] saved: ${type} ${stableHash(content)}`);
         saveTranslationCache(cache);
     }
+
 
 // ═══════════════════════════════════════════════════════════
 // 模块: ui.js
@@ -3297,6 +3404,18 @@ function S2translate(id, title, innerHTML) {
         const customFontSource = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
         const homeFeedMode = document.querySelector('input[name="zh-home-feed-mode"]:checked')?.value || 'scroll';
         const fontFileInput = document.getElementById('zh-cfg-font-file');
+        const translationPrompts = Array.from(document.querySelectorAll('#zh-translation-prompt-list .zh-translation-prompt-row'))
+            .map((row, index) => ({
+                id: row.dataset.promptId || `translation-prompt-${index + 1}`,
+                name: (row.querySelector('.zh-translation-prompt-name')?.value || '').trim(),
+                prompt: (row.querySelector('.zh-translation-prompt-text')?.value || '').trim(),
+                enabled: !!row.querySelector('.zh-translation-prompt-check')?.checked
+            }))
+            .filter(item => item.prompt)
+            .map((item, index) => ({
+                ...item,
+                name: item.name || `Prompt ${index + 1}`
+            }));
         return {
             ...readApiSettingsFromForm(),
             targetLang: document.getElementById('zh-cfg-lang').value,
@@ -3315,7 +3434,9 @@ function S2translate(id, title, innerHTML) {
             customFontSource: ['url', 'file'].includes(customFontSource) ? customFontSource : 'none',
             customFontUrl: (document.getElementById('zh-cfg-font-url')?.value || '').trim(),
             customFontName: fontFileInput?.dataset.fontName || config.customFontName || '',
-            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged'
+            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged',
+            translationPrompts: normalizeTranslationPromptLibrary(translationPrompts),
+            translationContextParagraphs: Math.max(0, Math.min(3, Number(document.getElementById('zh-cfg-translation-context')?.value) || 0))
         };
     }
 
@@ -3334,8 +3455,8 @@ function S2translate(id, title, innerHTML) {
             '【翻译摘要提示词】',
             '你是一个阅读助手。请将文章提炼为100字左右的摘要，主要用于提供上下文。不要有任何多余的客套话。',
             '',
-            '【段落翻译提示词模板】',
-            `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。注意：如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`
+            '【段落翻译提示词库】',
+            getTranslationPromptLibrary().map((item, index) => `${index + 1}. ${item.name} [${item.enabled !== false ? 'enabled' : 'disabled'}]\n${item.prompt.replace(/\{\{targetLang\}\}/g, config.targetLang || 'English')}`).join('\n\n')
         ].join('\n\n');
         createModal('zh-prompts-modal', '当前系统提示词预览', `<pre style="white-space:pre-wrap;word-break:break-word;background:var(--zh-code);border:1px solid var(--zh-border);border-radius:4px;padding:12px;max-height:60vh;overflow:auto;">${escapeHTML(content)}</pre>`);
     }
@@ -3355,6 +3476,11 @@ function S2translate(id, title, innerHTML) {
 
         async function commitSettingsSave(onDone) {
             const next = readSettingsFromForm();
+            if (!next.translationPrompts.length) {
+                showToast('至少保留一条有效翻译提示词');
+                activateSettingsSection('reading');
+                return;
+            }
             const saveButton = document.getElementById('zh-save-settings-btn');
             const saveStatus = document.getElementById('zh-settings-save-status');
             if (saveButton) saveButton.disabled = true;
@@ -3476,6 +3602,47 @@ function S2translate(id, title, innerHTML) {
             });
         });
         syncFontSourcePanels();
+
+        function refreshTranslationPromptRows() {
+            settingsModal.querySelectorAll('.zh-translation-prompt-row').forEach((row, index) => {
+                row.dataset.promptIndex = String(index);
+                if (!row.dataset.promptId) row.dataset.promptId = `translation-prompt-${index + 1}`;
+                const deleteButton = row.querySelector('.zh-translation-prompt-delete');
+                if (deleteButton && !deleteButton.dataset.bound) {
+                    deleteButton.dataset.bound = '1';
+                    deleteButton.addEventListener('click', () => {
+                        const rows = settingsModal.querySelectorAll('.zh-translation-prompt-row');
+                        if (rows.length <= 1) {
+                            showToast('至少保留一条翻译提示词');
+                            return;
+                        }
+                        row.remove();
+                        refreshTranslationPromptRows();
+                        updateSettingsDirtyStatus();
+                    });
+                }
+            });
+        }
+
+        refreshTranslationPromptRows();
+        document.getElementById('zh-add-translation-prompt')?.addEventListener('click', () => {
+            const list = document.getElementById('zh-translation-prompt-list');
+            if (!list) return;
+            const row = document.createElement('div');
+            row.className = 'zh-translation-prompt-row';
+            row.dataset.promptId = `translation-prompt-${Date.now()}`;
+            row.innerHTML = `
+                <div class="zh-translation-prompt-toolbar">
+                    <label class="zh-settings-toggle zh-translation-prompt-enabled"><span><b>启用轮换</b></span><input type="checkbox" class="zh-translation-prompt-check" checked><i></i></label>
+                    <input type="text" class="zh-translation-prompt-name" placeholder="提示词名称">
+                    <button type="button" class="zh-inline-btn zh-translation-prompt-delete" title="删除提示词">删除</button>
+                </div>
+                <textarea class="zh-translation-prompt-text" rows="4" placeholder="使用 {{targetLang}} 代表目标语言"></textarea>`;
+            list.appendChild(row);
+            refreshTranslationPromptRows();
+            row.querySelector('.zh-translation-prompt-name')?.focus();
+            updateSettingsDirtyStatus();
+        });
 
         fontFileInput?.addEventListener('change', async () => {
             const file = fontFileInput.files?.[0];
@@ -3713,6 +3880,31 @@ function S2translate(id, title, innerHTML) {
         return _articleSummary;
     }
 
+function getTranslationPromptLibrary() {
+    const prompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+    return prompts.length ? prompts : DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item }));
+}
+
+function getEnabledTranslationPrompts() {
+    const enabled = getTranslationPromptLibrary().filter(item => item.enabled !== false);
+    return enabled.length ? enabled : getTranslationPromptLibrary().slice(0, 1);
+}
+
+function getTranslationPromptForIndex(index) {
+    const prompts = getEnabledTranslationPrompts();
+    return prompts[(Math.max(0, Number(index) || 0) + _translationPromptCursor) % prompts.length];
+}
+
+function buildTranslationSystemPrompt(promptTemplate) {
+    const customPrompt = String(promptTemplate?.prompt || '').replace(/\{\{targetLang\}\}/g, config.targetLang || 'English');
+    return `${customPrompt}
+
+Only translate the content between CONTENT_TO_TRANSLATE_ONLY_BEGIN and CONTENT_TO_TRANSLATE_ONLY_END.
+CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE is reference context only; never translate, repeat, or output it.
+Do not output boundary labels such as Previous Summary, Content to Translate, CONTEXT_SUMMARY, or CONTENT_TO_TRANSLATE.
+Preserve complete HTML table structure. Keep formulas and code blocks unchanged. Keep each translated paragraph within 100 words. Return translation content only.`;
+}
+
 function getActiveTranslationRoot() {
     if (_homeState.view === 'list') {
         alert('请先从首页推荐列表中选择一条内容，再开启翻译。');
@@ -3781,7 +3973,7 @@ function buildTranslationPrompt(node) {
     return `CONTENT_TO_TRANSLATE_ONLY_BEGIN\n${node.outerHTML}\nCONTENT_TO_TRANSLATE_ONLY_END`;
 }
 
-function buildTranslationMessages(systemPrompt, node) {
+function buildTranslationMessages(systemPrompt, node, contextText = '') {
     const messages = [
         { role: 'system', content: systemPrompt }
     ];
@@ -3790,6 +3982,13 @@ function buildTranslationMessages(systemPrompt, node) {
         messages.push({
             role: 'user',
             content: `CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE:\n${_articleSummary}\nEND_CONTEXT_SUMMARY`
+        });
+    }
+
+    if (contextText) {
+        messages.push({
+            role: 'user',
+            content: `ADJACENT_PARAGRAPHS_FOR_STYLE_AND_CONTEXT_ONLY_DO_NOT_TRANSLATE:\n${contextText}\nEND_ADJACENT_PARAGRAPHS`
         });
     }
 
@@ -3807,6 +4006,7 @@ function cleanTranslationOutput(content) {
         .replace(/^\s*(【?Previous Summary】?|Previous Summary|CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE)\s*[:：]?[\s\S]*?(【?Content to Translate】?|Content to Translate|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
         .replace(/^\s*(【?待翻译内容】?|待翻译内容|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
         .replace(/\s*(CONTENT_TO_TRANSLATE_ONLY_END|END_CONTEXT_SUMMARY)\s*$/i, '')
+        .replace(/\s*END_ADJACENT_PARAGRAPHS\s*$/i, '')
         .trim();
     return text || content;
 }
@@ -3923,16 +4123,13 @@ async function processTranslation() {
         document.body.classList.add('zh-show-tr');
     }
     const nodes = initialNodes.length ? initialNodes : collectTranslationNodes(richTextContainer);
-    const sysTr = `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。
-只翻译 CONTENT_TO_TRANSLATE_ONLY_BEGIN 和 CONTENT_TO_TRANSLATE_ONLY_END 之间的内容。
-CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，绝对不能翻译、复述、输出或改写。
-输出中不得出现 Previous Summary、Content to Translate、CONTEXT_SUMMARY、CONTENT_TO_TRANSLATE 等边界标题。
-如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`;
+    const contextCount = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
 
     // 4. 并发处理所有节点（保持全并发，不加await）
     Array.from(nodes).forEach((node, i) => {
+        const prompt = getTranslationPromptForIndex(i);
         const cacheContent = getNodeCacheContent(node);
-        const cachedTranslation = getTranslationCache('block', cacheContent);
+        const cachedTranslation = getTranslationCache('block', cacheContent, prompt);
         let currentTranslation = cachedTranslation || '';
 
         const trCard = document.createElement('div');
@@ -3940,13 +4137,28 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
         trCard.dataset.zhTrFor = stableHash(cacheContent);
         node.after(trCard);
 
+        const getAdjacentContext = () => {
+            if (!contextCount) return '';
+            const contextNodes = [];
+            for (let offset = contextCount; offset >= 1; offset -= 1) {
+                const adjacent = nodes[i - offset];
+                if (adjacent) contextNodes.push(normalizeTranslationCacheText(adjacent.innerText || adjacent.textContent || ''));
+            }
+            for (let offset = 1; offset <= contextCount; offset += 1) {
+                const adjacent = nodes[i + offset];
+                if (adjacent) contextNodes.push(normalizeTranslationCacheText(adjacent.innerText || adjacent.textContent || ''));
+            }
+            return contextNodes.filter(Boolean).join('\n\n');
+        };
         const requestAndRender = (isRegenerate = false) => {
             trCard.innerHTML = `<span class="zh-spinner"></span><span style="opacity:0.8;">${isRegenerate ? '正在重新生成翻译...' : '正在请求 AI 接口研读...'}</span>`;
-            callLLMMessagesWithRetry(buildTranslationMessages(sysTr, node), { retries: 2 })
+            const requestPrompt = isRegenerate ? getTranslationPromptForIndex(++_translationPromptCursor + i) : prompt;
+            const requestSystemPrompt = buildTranslationSystemPrompt(requestPrompt);
+            callLLMMessagesWithRetry(buildTranslationMessages(requestSystemPrompt, node, getAdjacentContext()), { retries: 2 })
                 .then(content => {
                     const cleaned = cleanTranslationOutput(content);
                     currentTranslation = cleaned;
-                    setTranslationCache('block', cacheContent, cleaned);
+                    setTranslationCache('block', cacheContent, cleaned, requestPrompt);
                     renderParagraphTranslationCard(trCard, cleaned, () => requestAndRender(true));
                 })
                 .catch(err => {
@@ -3989,6 +4201,7 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
         }
     });
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // 模块: expression.js

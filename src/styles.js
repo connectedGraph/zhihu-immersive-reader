@@ -437,6 +437,23 @@ const STYLE_CSS = `
     #zh-settings-modal .zh-settings-details textarea { height: auto; min-height: 112px; margin: 10px 0 8px; padding: 10px 12px; resize: vertical; font-family: Consolas, monospace; line-height: 1.5; }
     .zh-settings-list { margin-top: 14px; font-size: 12px; line-height: 1.6; }
     .zh-collections-list { max-height: 360px; overflow-y: auto; }
+    .zh-translation-prompt-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .zh-translation-prompt-row { padding: 12px; border: 1px solid var(--zh-border); border-radius: 6px; background: var(--zh-paper); }
+    .zh-translation-prompt-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .zh-translation-prompt-enabled { min-height: 34px; flex: 0 0 auto; padding: 0; border: 0; }
+    .zh-translation-prompt-enabled > span { display: none; }
+    .zh-translation-prompt-enabled i { width: 34px; height: 20px; }
+    .zh-translation-prompt-enabled i::after { width: 14px; height: 14px; }
+    .zh-translation-prompt-enabled input:checked + i::after { transform: translateX(14px); }
+    #zh-settings-modal .zh-translation-prompt-name { min-width: 0; flex: 1; height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--zh-border); border-radius: 4px; outline: 0; background: var(--zh-code); color: var(--zh-text); font-size: 12px; }
+    #zh-settings-modal .zh-translation-prompt-name:focus { border-color: var(--zh-accent); }
+    #zh-settings-modal .zh-translation-prompt-text { width: 100%; min-height: 88px; margin-top: 10px; padding: 10px; box-sizing: border-box; resize: vertical; border: 1px solid var(--zh-border); border-radius: 4px; outline: 0; background: var(--zh-code); color: var(--zh-text); font: 12px/1.6 Consolas, monospace; }
+    #zh-settings-modal .zh-translation-prompt-text:focus { border-color: var(--zh-accent); }
+    @media (max-width: 520px) {
+        .zh-translation-prompt-toolbar { flex-wrap: wrap; }
+        .zh-translation-prompt-name { order: 2; flex-basis: calc(100% - 44px); }
+        .zh-translation-prompt-delete { order: 3; }
+    }
 
     #zh-settings-modal .zh-pwd-wrap { margin: 0; }
     #zh-settings-modal .zh-eye-icon { right: 7px; width: 28px; height: 28px; padding: 5px; box-sizing: border-box; border: 0; border-radius: 4px; background: transparent; }

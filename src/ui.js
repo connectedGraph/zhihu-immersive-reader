@@ -452,6 +452,18 @@ function S2translate(id, title, innerHTML) {
         const customFontSource = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
         const homeFeedMode = document.querySelector('input[name="zh-home-feed-mode"]:checked')?.value || 'scroll';
         const fontFileInput = document.getElementById('zh-cfg-font-file');
+        const translationPrompts = Array.from(document.querySelectorAll('#zh-translation-prompt-list .zh-translation-prompt-row'))
+            .map((row, index) => ({
+                id: row.dataset.promptId || `translation-prompt-${index + 1}`,
+                name: (row.querySelector('.zh-translation-prompt-name')?.value || '').trim(),
+                prompt: (row.querySelector('.zh-translation-prompt-text')?.value || '').trim(),
+                enabled: !!row.querySelector('.zh-translation-prompt-check')?.checked
+            }))
+            .filter(item => item.prompt)
+            .map((item, index) => ({
+                ...item,
+                name: item.name || `Prompt ${index + 1}`
+            }));
         return {
             ...readApiSettingsFromForm(),
             targetLang: document.getElementById('zh-cfg-lang').value,
@@ -470,7 +482,9 @@ function S2translate(id, title, innerHTML) {
             customFontSource: ['url', 'file'].includes(customFontSource) ? customFontSource : 'none',
             customFontUrl: (document.getElementById('zh-cfg-font-url')?.value || '').trim(),
             customFontName: fontFileInput?.dataset.fontName || config.customFontName || '',
-            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged'
+            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged',
+            translationPrompts: normalizeTranslationPromptLibrary(translationPrompts),
+            translationContextParagraphs: Math.max(0, Math.min(3, Number(document.getElementById('zh-cfg-translation-context')?.value) || 0))
         };
     }
 
@@ -489,8 +503,8 @@ function S2translate(id, title, innerHTML) {
             '【翻译摘要提示词】',
             '你是一个阅读助手。请将文章提炼为100字左右的摘要，主要用于提供上下文。不要有任何多余的客套话。',
             '',
-            '【段落翻译提示词模板】',
-            `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。注意：如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`
+            '【段落翻译提示词库】',
+            getTranslationPromptLibrary().map((item, index) => `${index + 1}. ${item.name} [${item.enabled !== false ? 'enabled' : 'disabled'}]\n${item.prompt.replace(/\{\{targetLang\}\}/g, config.targetLang || 'English')}`).join('\n\n')
         ].join('\n\n');
         createModal('zh-prompts-modal', '当前系统提示词预览', `<pre style="white-space:pre-wrap;word-break:break-word;background:var(--zh-code);border:1px solid var(--zh-border);border-radius:4px;padding:12px;max-height:60vh;overflow:auto;">${escapeHTML(content)}</pre>`);
     }
@@ -510,6 +524,11 @@ function S2translate(id, title, innerHTML) {
 
         async function commitSettingsSave(onDone) {
             const next = readSettingsFromForm();
+            if (!next.translationPrompts.length) {
+                showToast('至少保留一条有效翻译提示词');
+                activateSettingsSection('reading');
+                return;
+            }
             const saveButton = document.getElementById('zh-save-settings-btn');
             const saveStatus = document.getElementById('zh-settings-save-status');
             if (saveButton) saveButton.disabled = true;
@@ -631,6 +650,47 @@ function S2translate(id, title, innerHTML) {
             });
         });
         syncFontSourcePanels();
+
+        function refreshTranslationPromptRows() {
+            settingsModal.querySelectorAll('.zh-translation-prompt-row').forEach((row, index) => {
+                row.dataset.promptIndex = String(index);
+                if (!row.dataset.promptId) row.dataset.promptId = `translation-prompt-${index + 1}`;
+                const deleteButton = row.querySelector('.zh-translation-prompt-delete');
+                if (deleteButton && !deleteButton.dataset.bound) {
+                    deleteButton.dataset.bound = '1';
+                    deleteButton.addEventListener('click', () => {
+                        const rows = settingsModal.querySelectorAll('.zh-translation-prompt-row');
+                        if (rows.length <= 1) {
+                            showToast('至少保留一条翻译提示词');
+                            return;
+                        }
+                        row.remove();
+                        refreshTranslationPromptRows();
+                        updateSettingsDirtyStatus();
+                    });
+                }
+            });
+        }
+
+        refreshTranslationPromptRows();
+        document.getElementById('zh-add-translation-prompt')?.addEventListener('click', () => {
+            const list = document.getElementById('zh-translation-prompt-list');
+            if (!list) return;
+            const row = document.createElement('div');
+            row.className = 'zh-translation-prompt-row';
+            row.dataset.promptId = `translation-prompt-${Date.now()}`;
+            row.innerHTML = `
+                <div class="zh-translation-prompt-toolbar">
+                    <label class="zh-settings-toggle zh-translation-prompt-enabled"><span><b>启用轮换</b></span><input type="checkbox" class="zh-translation-prompt-check" checked><i></i></label>
+                    <input type="text" class="zh-translation-prompt-name" placeholder="提示词名称">
+                    <button type="button" class="zh-inline-btn zh-translation-prompt-delete" title="删除提示词">删除</button>
+                </div>
+                <textarea class="zh-translation-prompt-text" rows="4" placeholder="使用 {{targetLang}} 代表目标语言"></textarea>`;
+            list.appendChild(row);
+            refreshTranslationPromptRows();
+            row.querySelector('.zh-translation-prompt-name')?.focus();
+            updateSettingsDirtyStatus();
+        });
 
         fontFileInput?.addEventListener('change', async () => {
             const file = fontFileInput.files?.[0];

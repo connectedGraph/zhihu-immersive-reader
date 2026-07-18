@@ -19,6 +19,31 @@
         return _articleSummary;
     }
 
+function getTranslationPromptLibrary() {
+    const prompts = normalizeTranslationPromptLibrary(config.translationPrompts);
+    return prompts.length ? prompts : DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item }));
+}
+
+function getEnabledTranslationPrompts() {
+    const enabled = getTranslationPromptLibrary().filter(item => item.enabled !== false);
+    return enabled.length ? enabled : getTranslationPromptLibrary().slice(0, 1);
+}
+
+function getTranslationPromptForIndex(index) {
+    const prompts = getEnabledTranslationPrompts();
+    return prompts[(Math.max(0, Number(index) || 0) + _translationPromptCursor) % prompts.length];
+}
+
+function buildTranslationSystemPrompt(promptTemplate) {
+    const customPrompt = String(promptTemplate?.prompt || '').replace(/\{\{targetLang\}\}/g, config.targetLang || 'English');
+    return `${customPrompt}
+
+Only translate the content between CONTENT_TO_TRANSLATE_ONLY_BEGIN and CONTENT_TO_TRANSLATE_ONLY_END.
+CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE is reference context only; never translate, repeat, or output it.
+Do not output boundary labels such as Previous Summary, Content to Translate, CONTEXT_SUMMARY, or CONTENT_TO_TRANSLATE.
+Preserve complete HTML table structure. Keep formulas and code blocks unchanged. Keep each translated paragraph within 100 words. Return translation content only.`;
+}
+
 function getActiveTranslationRoot() {
     if (_homeState.view === 'list') {
         alert('请先从首页推荐列表中选择一条内容，再开启翻译。');
@@ -87,7 +112,7 @@ function buildTranslationPrompt(node) {
     return `CONTENT_TO_TRANSLATE_ONLY_BEGIN\n${node.outerHTML}\nCONTENT_TO_TRANSLATE_ONLY_END`;
 }
 
-function buildTranslationMessages(systemPrompt, node) {
+function buildTranslationMessages(systemPrompt, node, contextText = '') {
     const messages = [
         { role: 'system', content: systemPrompt }
     ];
@@ -96,6 +121,13 @@ function buildTranslationMessages(systemPrompt, node) {
         messages.push({
             role: 'user',
             content: `CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE:\n${_articleSummary}\nEND_CONTEXT_SUMMARY`
+        });
+    }
+
+    if (contextText) {
+        messages.push({
+            role: 'user',
+            content: `ADJACENT_PARAGRAPHS_FOR_STYLE_AND_CONTEXT_ONLY_DO_NOT_TRANSLATE:\n${contextText}\nEND_ADJACENT_PARAGRAPHS`
         });
     }
 
@@ -113,6 +145,7 @@ function cleanTranslationOutput(content) {
         .replace(/^\s*(【?Previous Summary】?|Previous Summary|CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE)\s*[:：]?[\s\S]*?(【?Content to Translate】?|Content to Translate|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
         .replace(/^\s*(【?待翻译内容】?|待翻译内容|CONTENT_TO_TRANSLATE_ONLY_BEGIN)\s*[:：]?/i, '')
         .replace(/\s*(CONTENT_TO_TRANSLATE_ONLY_END|END_CONTEXT_SUMMARY)\s*$/i, '')
+        .replace(/\s*END_ADJACENT_PARAGRAPHS\s*$/i, '')
         .trim();
     return text || content;
 }
@@ -229,16 +262,13 @@ async function processTranslation() {
         document.body.classList.add('zh-show-tr');
     }
     const nodes = initialNodes.length ? initialNodes : collectTranslationNodes(richTextContainer);
-    const sysTr = `你是一个翻译专家。请翻译到目标语言：【${config.targetLang}】。
-只翻译 CONTENT_TO_TRANSLATE_ONLY_BEGIN 和 CONTENT_TO_TRANSLATE_ONLY_END 之间的内容。
-CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，绝对不能翻译、复述、输出或改写。
-输出中不得出现 Previous Summary、Content to Translate、CONTEXT_SUMMARY、CONTENT_TO_TRANSLATE 等边界标题。
-如果是表格则输出完整HTML表格结构；遇到公式块、代码块请原文保留，不可随意篡改。输出纯内容，不要markdown格式的标记。`;
+    const contextCount = Math.max(0, Math.min(3, Number(config.translationContextParagraphs) || 0));
 
     // 4. 并发处理所有节点（保持全并发，不加await）
     Array.from(nodes).forEach((node, i) => {
+        const prompt = getTranslationPromptForIndex(i);
         const cacheContent = getNodeCacheContent(node);
-        const cachedTranslation = getTranslationCache('block', cacheContent);
+        const cachedTranslation = getTranslationCache('block', cacheContent, prompt);
         let currentTranslation = cachedTranslation || '';
 
         const trCard = document.createElement('div');
@@ -246,13 +276,28 @@ CONTEXT_SUMMARY_FOR_REFERENCE_ONLY_DO_NOT_TRANSLATE 只用于理解上下文，�
         trCard.dataset.zhTrFor = stableHash(cacheContent);
         node.after(trCard);
 
+        const getAdjacentContext = () => {
+            if (!contextCount) return '';
+            const contextNodes = [];
+            for (let offset = contextCount; offset >= 1; offset -= 1) {
+                const adjacent = nodes[i - offset];
+                if (adjacent) contextNodes.push(normalizeTranslationCacheText(adjacent.innerText || adjacent.textContent || ''));
+            }
+            for (let offset = 1; offset <= contextCount; offset += 1) {
+                const adjacent = nodes[i + offset];
+                if (adjacent) contextNodes.push(normalizeTranslationCacheText(adjacent.innerText || adjacent.textContent || ''));
+            }
+            return contextNodes.filter(Boolean).join('\n\n');
+        };
         const requestAndRender = (isRegenerate = false) => {
             trCard.innerHTML = `<span class="zh-spinner"></span><span style="opacity:0.8;">${isRegenerate ? '正在重新生成翻译...' : '正在请求 AI 接口研读...'}</span>`;
-            callLLMMessagesWithRetry(buildTranslationMessages(sysTr, node), { retries: 2 })
+            const requestPrompt = isRegenerate ? getTranslationPromptForIndex(++_translationPromptCursor + i) : prompt;
+            const requestSystemPrompt = buildTranslationSystemPrompt(requestPrompt);
+            callLLMMessagesWithRetry(buildTranslationMessages(requestSystemPrompt, node, getAdjacentContext()), { retries: 2 })
                 .then(content => {
                     const cleaned = cleanTranslationOutput(content);
                     currentTranslation = cleaned;
-                    setTranslationCache('block', cacheContent, cleaned);
+                    setTranslationCache('block', cacheContent, cleaned, requestPrompt);
                     renderParagraphTranslationCard(trCard, cleaned, () => requestAndRender(true));
                 })
                 .catch(err => {

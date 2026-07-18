@@ -68,6 +68,46 @@ const FONT_PRESETS = [
     }
 ];
 
+// 翻译提示词库。{{targetLang}} 会在请求时替换为当前目标语言。
+const DEFAULT_TRANSLATION_PROMPTS = [
+    {
+        id: 'conservative-document',
+        name: 'Conservative document translation',
+        prompt: 'Translate the source into {{targetLang}} faithfully and clearly. Use a formal, neutral tone. Preserve meaning, facts, structure, tables, formulas, and code. Do not add, omit, or explain. Keep each output paragraph within 100 words. Return only the translation.',
+        enabled: true
+    },
+    {
+        id: 'native-internet',
+        name: 'Native internet style',
+        prompt: 'Translate into natural, fluent {{targetLang}} as a native speaker would write online. Preserve the original meaning and intent, but improve rhythm, idioms, and readability. Lightly adapt expressions for the target culture. Keep each output paragraph within 100 words. Do not add facts or commentary. Return only the translation.',
+        enabled: true
+    },
+    {
+        id: 'bold-native-internet',
+        name: 'Bold and punchy native internet style',
+        prompt: 'Translate into bold, highly natural {{targetLang}} with a strong internet voice. Use punchy rhythm, idiomatic phrasing, and light slang only when it fits. Preserve meaning and facts; never invent details. Keep each output paragraph within 100 words. Return only the translation.',
+        enabled: true
+    }
+];
+
+function normalizeTranslationPromptLibrary(value) {
+    if (!Array.isArray(value)) return DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item }));
+    return value
+        .map((item, index) => {
+            if (!item || typeof item !== 'object') return null;
+            const prompt = String(item.prompt || '').trim();
+            if (!prompt) return null;
+            return {
+                id: String(item.id || `translation-prompt-${index + 1}`),
+                name: String(item.name || `Prompt ${index + 1}`).trim() || `Prompt ${index + 1}`,
+                prompt,
+                enabled: item.enabled !== false
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 30);
+}
+
 // ----- 默认配置 -----
 const DEFAULT_CONFIG = {
     apiHost: 'https://api.deepseek.com/v1',
@@ -94,7 +134,9 @@ const DEFAULT_CONFIG = {
     customFontSource: 'none',
     customFontUrl: '',
     customFontName: '',
-    homeFeedMode: 'scroll'
+    homeFeedMode: 'scroll',
+    translationPrompts: DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item })),
+    translationContextParagraphs: 1
 };
 
 const EXPORT_HIDDEN_SELECTORS = [
