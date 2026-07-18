@@ -65,6 +65,135 @@
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
         try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
         try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：字体加载失败', err));
+    }
+
+    let _activeCustomFontFace = null;
+    let _loadedCustomFontKey = '';
+    let _fontApplyRequestId = 0;
+
+    function getFontPreset(id) {
+        return FONT_PRESETS.find(item => item.id === id) || FONT_PRESETS[0];
+    }
+
+    function getStoredCustomFont() {
+        try {
+            const raw = crossOriginGet(CUSTOM_FONT_STORAGE_KEY);
+            if (!raw) return null;
+            const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return record && record.dataUrl ? record : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function persistCustomFont(record) {
+        crossOriginSet(CUSTOM_FONT_STORAGE_KEY, JSON.stringify(record));
+        const stored = getStoredCustomFont();
+        if (!stored || stored.name !== record.name || stored.size !== record.size || stored.lastModified !== record.lastModified || stored.dataUrl?.length !== record.dataUrl.length) {
+            throw new Error('字体文件未能写入扩展存储，请改用体积更小的 WOFF2 文件');
+        }
+    }
+
+    function dataUrlToArrayBuffer(dataUrl) {
+        const comma = String(dataUrl || '').indexOf(',');
+        if (comma < 0) throw new Error('字体文件数据不完整');
+        const bytes = atob(String(dataUrl).slice(comma + 1));
+        const buffer = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) buffer[i] = bytes.charCodeAt(i);
+        return buffer.buffer;
+    }
+
+    function readFontFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({
+                name: file.name,
+                type: file.type || '',
+                size: file.size,
+                lastModified: file.lastModified || 0,
+                dataUrl: String(reader.result || '')
+            });
+            reader.onerror = () => reject(new Error('无法读取字体文件'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function requestFontArrayBuffer(url) {
+        const parsed = new URL(url, location.href);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('字体地址仅支持 HTTP 或 HTTPS');
+        const gmRequest = typeof GM_xmlhttpRequest === 'function'
+            ? GM_xmlhttpRequest
+            : (typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null);
+        if (!gmRequest) {
+            return fetch(parsed.href).then(response => {
+                if (!response.ok) throw new Error(`字体下载失败（HTTP ${response.status}）`);
+                return response.arrayBuffer();
+            });
+        }
+        return new Promise((resolve, reject) => {
+            gmRequest({
+                method: 'GET',
+                url: parsed.href,
+                responseType: 'arraybuffer',
+                timeout: 30000,
+                onload: response => {
+                    if (response.status && (response.status < 200 || response.status >= 300)) {
+                        reject(new Error(`字体下载失败（HTTP ${response.status}）`));
+                        return;
+                    }
+                    if (!response.response) {
+                        reject(new Error('字体地址没有返回文件数据'));
+                        return;
+                    }
+                    resolve(response.response);
+                },
+                ontimeout: () => reject(new Error('字体下载超时')),
+                onerror: () => reject(new Error('字体下载失败，请检查直链是否可访问'))
+            });
+        });
+    }
+
+    async function applyReadingFont(settings = config, options = {}) {
+        const requestId = ++_fontApplyRequestId;
+        const preset = getFontPreset(settings.fontPreset);
+        const root = document.documentElement;
+        root.style.setProperty('--zh-reader-font', preset.stack, 'important');
+
+        const source = ['url', 'file'].includes(settings.customFontSource) ? settings.customFontSource : 'none';
+        if (source === 'none') return { custom: false, name: preset.name };
+
+        let fontData;
+        let fontKey;
+        let fontName = settings.customFontName || '自定义字体';
+        if (source === 'url') {
+            const url = String(settings.customFontUrl || '').trim();
+            if (!url) throw new Error('请填写字体文件直链');
+            const parsed = new URL(url, location.href);
+            if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('字体地址仅支持 HTTP 或 HTTPS');
+            fontKey = `url:${parsed.href}`;
+            try { fontName = decodeURIComponent(parsed.pathname.split('/').pop()) || fontName; } catch (e) {}
+            if (_loadedCustomFontKey !== fontKey) fontData = await requestFontArrayBuffer(parsed.href);
+        } else {
+            const record = options.customFontRecord || getStoredCustomFont();
+            if (!record?.dataUrl) throw new Error('请先选择本地字体文件');
+            fontKey = `file:${record.name || ''}:${record.size || record.dataUrl.length}:${record.lastModified || 0}`;
+            fontName = record.name || fontName;
+            if (_loadedCustomFontKey !== fontKey) fontData = dataUrlToArrayBuffer(record.dataUrl);
+        }
+
+        if (requestId !== _fontApplyRequestId) return { custom: false, name: fontName, stale: true };
+        if (_loadedCustomFontKey !== fontKey) {
+            const fontFace = new FontFace('ZhImmersiveCustomFont', fontData);
+            await fontFace.load();
+            if (requestId !== _fontApplyRequestId) return { custom: false, name: fontName, stale: true };
+            if (_activeCustomFontFace) document.fonts.delete(_activeCustomFontFace);
+            document.fonts.add(fontFace);
+            _activeCustomFontFace = fontFace;
+            _loadedCustomFontKey = fontKey;
+        }
+        root.style.setProperty('--zh-reader-font', `'ZhImmersiveCustomFont', ${preset.stack}`, 'important');
+        return { custom: true, name: fontName };
     }
 
     function sanitizeLLMHTML(content) {
@@ -238,7 +367,7 @@
             <div class="zh-modal">
                 <div class="zh-modal-header">
                     <span>${title}</span>
-                    <button class="zh-modal-close" id="${id}-close-btn">×</button>
+                    <button class="zh-modal-close" id="${id}-close-btn" type="button" aria-label="关闭" title="关闭">×</button>
                 </div>
                 <div class="zh-modal-body">${innerHTML}</div>
             </div>
@@ -319,6 +448,10 @@ function S2translate(id, title, innerHTML) {
     function readSettingsFromForm() {
         const shareFormat = document.getElementById('zh-cfg-share-format')?.value || 'svg';
         const imageMode = document.getElementById('zh-cfg-image-mode')?.value || 'preview';
+        const fontPreset = document.querySelector('input[name="zh-font-preset"]:checked')?.value || 'classic-serif';
+        const customFontSource = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
+        const homeFeedMode = document.querySelector('input[name="zh-home-feed-mode"]:checked')?.value || 'scroll';
+        const fontFileInput = document.getElementById('zh-cfg-font-file');
         return {
             ...readApiSettingsFromForm(),
             targetLang: document.getElementById('zh-cfg-lang').value,
@@ -332,7 +465,12 @@ function S2translate(id, title, innerHTML) {
             embeddingHost: (document.getElementById('zh-cfg-embedding-host')?.value || '').trim(),
             embeddingModel: (document.getElementById('zh-cfg-embedding-model')?.value || '').trim() || 'text-embedding-3-small',
             embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim(),
-            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim()
+            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim(),
+            fontPreset: FONT_PRESETS.some(item => item.id === fontPreset) ? fontPreset : 'classic-serif',
+            customFontSource: ['url', 'file'].includes(customFontSource) ? customFontSource : 'none',
+            customFontUrl: (document.getElementById('zh-cfg-font-url')?.value || '').trim(),
+            customFontName: fontFileInput?.dataset.fontName || config.customFontName || '',
+            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged'
         };
     }
 
@@ -360,41 +498,58 @@ function S2translate(id, title, innerHTML) {
     function showSettingsModal() {
         if(document.getElementById('zh-settings-modal')) return;
 
-        const getFormSnapshot = () => JSON.stringify(readSettingsFromForm());
+        let pendingFontRecord = null;
+        let pendingFontToken = '';
+        const getFormSnapshot = () => JSON.stringify({ settings: readSettingsFromForm(), pendingFontToken });
         let initialSnapshot = '';
 
         function closeSettingsModal() {
+            applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：恢复字体失败', err));
             document.getElementById('zh-settings-modal')?.remove();
         }
 
         async function commitSettingsSave(onDone) {
             const next = readSettingsFromForm();
+            const saveButton = document.getElementById('zh-save-settings-btn');
+            const saveStatus = document.getElementById('zh-settings-save-status');
+            if (saveButton) saveButton.disabled = true;
+            if (saveStatus) saveStatus.textContent = '正在验证并应用设置...';
             const prevModel = (config.embeddingModel || '').trim();
             const nextModel = (next.embeddingModel || '').trim();
-            if (nextModel && prevModel && nextModel !== prevModel) {
-                let hasEmbeddings = false;
-                try {
-                    hasEmbeddings = (await getAllWikiCards()).some(c => c.embedding && c.embedding.length);
-                } catch (e) {}
-                if (hasEmbeddings) {
-                    const ok = window.confirm(`检测到 Embedding 模型从「${prevModel}」改为「${nextModel}」。\n\n不同模型生成的向量互不兼容，旧向量将无法用于语义搜索。\n\n点「确定」：清空全部已有向量（卡片正文保留），之后可重新跑 Embedding；\n点「取消」：保留旧向量，本次不更换模型。`);
-                    if (!ok) {
-                        next.embeddingModel = prevModel;
-                    } else {
-                        try {
+            try {
+                const fontResult = await applyReadingFont(next, { customFontRecord: pendingFontRecord });
+                if (fontResult.stale) throw new Error('字体选择在保存过程中发生变化，请重新保存');
+                if (fontResult.custom) next.customFontName = fontResult.name;
+                if (next.customFontSource === 'file' && pendingFontRecord) persistCustomFont(pendingFontRecord);
+                if (nextModel && prevModel && nextModel !== prevModel) {
+                    let hasEmbeddings = false;
+                    try {
+                        hasEmbeddings = (await getAllWikiCards()).some(c => c.embedding && c.embedding.length);
+                    } catch (e) {}
+                    if (hasEmbeddings) {
+                        const ok = window.confirm(`检测到 Embedding 模型从「${prevModel}」改为「${nextModel}」。\n\n不同模型生成的向量互不兼容，旧向量将无法用于语义搜索。\n\n点「确定」：清空全部已有向量（卡片正文保留），之后可重新跑 Embedding；\n点「取消」：保留旧向量，本次不更换模型。`);
+                        if (!ok) {
+                            next.embeddingModel = prevModel;
+                        } else {
                             const cleared = await clearAllCardEmbeddings();
                             showToast(`已清空 ${cleared} 条旧向量`);
-                        } catch (e) {
-                            alert('清空旧向量失败：' + e.message);
-                            return;
                         }
                     }
                 }
+                saveConfig(next);
+                if (window._isImmersive) setupImageToggles();
+                if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+                if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
+                onDone?.();
+                showToast('设置已保存');
+            } catch (e) {
+                const message = e?.message || String(e);
+                if (saveStatus) saveStatus.textContent = `无法保存：${message}`;
+                showToast(`设置未保存：${message}`);
+                activateSettingsSection('appearance');
+            } finally {
+                if (saveButton?.isConnected) saveButton.disabled = false;
             }
-            saveConfig(next);
-            if (window._isImmersive) setupImageToggles();
-            onDone?.();
-            showToast('设置已保存');
         }
 
         function tryClose() {
@@ -407,8 +562,107 @@ function S2translate(id, title, innerHTML) {
             }
         }
 
-        createModal('zh-settings-modal', '⚙️ 设置偏好', SETTINGS_MODAL_HTML(config), tryClose);
+        createModal('zh-settings-modal', '设置', SETTINGS_MODAL_HTML(config), tryClose);
+        const settingsModal = document.getElementById('zh-settings-modal');
+        const fontFileInput = document.getElementById('zh-cfg-font-file');
+        if (fontFileInput) fontFileInput.dataset.fontName = config.customFontName || '';
+
+        function activateSettingsSection(sectionName) {
+            settingsModal.querySelectorAll('.zh-settings-nav-btn').forEach(button => {
+                button.classList.toggle('is-active', button.dataset.section === sectionName);
+            });
+            settingsModal.querySelectorAll('.zh-settings-section').forEach(section => {
+                const active = section.dataset.section === sectionName;
+                section.hidden = !active;
+                section.classList.toggle('is-active', active);
+            });
+            const scroll = settingsModal.querySelector('.zh-settings-scroll');
+            if (scroll) scroll.scrollTop = 0;
+        }
+
+        settingsModal.querySelectorAll('.zh-settings-nav-btn').forEach(button => {
+            button.addEventListener('click', () => activateSettingsSection(button.dataset.section));
+        });
+        document.getElementById('zh-cancel-settings-btn').addEventListener('click', tryClose);
+        function updateSettingsDirtyStatus() {
+            const status = document.getElementById('zh-settings-save-status');
+            if (status && initialSnapshot) status.textContent = getFormSnapshot() === initialSnapshot ? '没有未保存的修改' : '有未保存的修改';
+        }
+        settingsModal.addEventListener('input', updateSettingsDirtyStatus);
         requestAnimationFrame(() => { initialSnapshot = getFormSnapshot(); });
+
+        function setFontStatus(message, error = false) {
+            const status = document.getElementById('zh-font-load-status');
+            if (!status) return;
+            status.textContent = message;
+            status.style.color = error ? '#b42318' : 'var(--zh-text)';
+            status.style.opacity = error ? '1' : '.68';
+        }
+
+        function syncFontSourcePanels() {
+            const source = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
+            settingsModal.querySelectorAll('.zh-custom-font-panel').forEach(panel => {
+                panel.hidden = panel.dataset.fontSource !== source;
+            });
+        }
+
+        async function previewCurrentFont() {
+            try {
+                setFontStatus('正在加载字体...');
+                const result = await applyReadingFont(readSettingsFromForm(), { customFontRecord: pendingFontRecord });
+                setFontStatus(result.custom ? `已加载：${result.name}` : `已预览：${result.name}`);
+            } catch (e) {
+                setFontStatus(e?.message || String(e), true);
+            }
+        }
+
+        settingsModal.querySelectorAll('input[name="zh-font-preset"]').forEach(input => {
+            input.addEventListener('change', () => {
+                settingsModal.querySelectorAll('.zh-font-preset').forEach(label => {
+                    label.classList.toggle('is-selected', label.contains(input) && input.checked);
+                });
+                previewCurrentFont();
+            });
+        });
+        settingsModal.querySelectorAll('input[name="zh-custom-font-source"]').forEach(input => {
+            input.addEventListener('change', () => {
+                syncFontSourcePanels();
+                if (input.checked && input.value !== 'url') previewCurrentFont();
+            });
+        });
+        syncFontSourcePanels();
+
+        fontFileInput?.addEventListener('change', async () => {
+            const file = fontFileInput.files?.[0];
+            if (!file) return;
+            const supported = /\.(woff2?|ttf|otf)$/i.test(file.name);
+            if (!supported) {
+                fontFileInput.value = '';
+                setFontStatus('仅支持 WOFF2、WOFF、TTF 或 OTF 文件', true);
+                return;
+            }
+            if (file.size > 25 * 1024 * 1024) {
+                fontFileInput.value = '';
+                setFontStatus('字体文件不能超过 25 MB，建议使用 WOFF2 压缩版本', true);
+                return;
+            }
+            try {
+                setFontStatus('正在读取字体文件...');
+                pendingFontRecord = await readFontFile(file);
+                pendingFontToken = `${file.name}:${file.size}:${file.lastModified}`;
+                fontFileInput.dataset.fontName = file.name;
+                document.getElementById('zh-font-file-name').textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+                const fileSourceRadio = settingsModal.querySelector('input[name="zh-custom-font-source"][value="file"]');
+                if (fileSourceRadio) fileSourceRadio.checked = true;
+                syncFontSourcePanels();
+                updateSettingsDirtyStatus();
+                await previewCurrentFont();
+            } catch (e) {
+                setFontStatus(e?.message || String(e), true);
+            }
+        });
+
+        document.getElementById('zh-preview-font-url').addEventListener('click', previewCurrentFont);
 
         // 绑定眼睛图标的切换事件
         document.getElementById('zh-toggle-eye').addEventListener('click', function() {
@@ -434,7 +688,12 @@ function S2translate(id, title, innerHTML) {
             try {
                 const testRes = await callLLM("你是一个连通性测试助手。请只回答'✅ 连接成功！'", "Test", apiSettings.apiKey, apiSettings.apiHost, apiSettings.apiModel);
                 saveConfig(apiSettings);
-                initialSnapshot = getFormSnapshot();
+                if (initialSnapshot) {
+                    const savedSnapshot = JSON.parse(initialSnapshot);
+                    Object.assign(savedSnapshot.settings, apiSettings);
+                    initialSnapshot = JSON.stringify(savedSnapshot);
+                }
+                updateSettingsDirtyStatus();
                 resDiv.style.color = 'green';
                 resDiv.innerText = `${testRes || '✅ 连接成功！'}\n已同步本次 Host / Key / Model，后续摘要会使用这套配置。`;
             } catch (err) {

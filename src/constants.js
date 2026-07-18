@@ -15,6 +15,7 @@ const THEMES = [
 
 // 自定义主题：localStorage 键 + 各 CSS 变量对应 UI 部位的中文指引
 const CUSTOM_THEMES_KEY = 'zh-immersive-custom-themes-v1';
+const CUSTOM_FONT_STORAGE_KEY = 'zh-immersive-custom-font-v1';
 const THEME_VAR_GUIDE = [
     { key: '--zh-bg', label: '页面背景', desc: '整个页面最外层的底色', def: '#E5DEC9' },
     { key: '--zh-paper', label: '卡片/纸张', desc: '文章正文、卡片、弹窗的纸面色', def: '#F8F4E6' },
@@ -25,6 +26,46 @@ const THEME_VAR_GUIDE = [
     { key: '--zh-quote', label: '引用/浅底块', desc: '引用块、开关轨道、浅色背景块', def: '#f0ebe1' },
     { key: '--zh-code', label: '代码块底色', desc: '代码块 / Wiki 输出区底色', def: '#eae5d9' },
     { key: '--zh-modal-bg', label: '弹窗背景', desc: '设置等模态弹窗的背景色', def: '#F8F4E6' }
+];
+
+// 阅读字体候选。优先使用已安装的本机字体，缺失时按字体栈逐级回退。
+const FONT_PRESETS = [
+    {
+        id: 'classic-serif',
+        name: '经典书卷',
+        desc: '楷体与衬线字体，保留原有阅读观感',
+        stack: `'Times New Roman', 'STKaiti', 'KaiTi', '楷体', serif`
+    },
+    {
+        id: 'system-sans',
+        name: '系统黑体',
+        desc: '优先匹配当前系统的中文界面字体',
+        stack: `system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'source-han-sans',
+        name: '思源黑体',
+        desc: '思源黑体或 Noto Sans CJK，未安装时回退到系统黑体',
+        stack: `'Source Han Sans SC', 'Noto Sans CJK SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'modern-sans',
+        name: '现代黑体',
+        desc: '优先使用 HarmonyOS Sans、MiSans 等现代中文黑体',
+        stack: `'HarmonyOS Sans SC', 'MiSans', 'OPPO Sans', 'vivo Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'source-han-serif',
+        name: '思源宋体',
+        desc: '适合长文的中文衬线字体',
+        stack: `'Source Han Serif SC', 'Noto Serif CJK SC', 'Noto Serif SC', 'Songti SC', 'SimSun', serif`
+    },
+    {
+        id: 'lxgw-wenkai',
+        name: '霞鹜文楷',
+        desc: '优先使用本机霞鹜文楷，缺失时回退到楷体',
+        stack: `'LXGW WenKai', 'LXGW WenKai Screen', 'STKaiti', 'KaiTi', serif`
+    }
 ];
 
 // ----- 默认配置 -----
@@ -48,7 +89,12 @@ const DEFAULT_CONFIG = {
     embeddingHost: '',
     embeddingModel: 'text-embedding-3-small',
     embeddingKey: '',
-    defaultCollectionId: ''
+    defaultCollectionId: '',
+    fontPreset: 'classic-serif',
+    customFontSource: 'none',
+    customFontUrl: '',
+    customFontName: '',
+    homeFeedMode: 'scroll'
 };
 
 const EXPORT_HIDDEN_SELECTORS = [

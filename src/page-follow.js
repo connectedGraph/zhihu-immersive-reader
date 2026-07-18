@@ -184,10 +184,11 @@
     function persistFollowFeedCache() {
         syncFollowItemsFromGroups();
         _followFeedCache.set(getFollowCacheKey(), {
-            schemaVersion: 2,
+            schemaVersion: 3,
             groups: _followState.groups,
             currentGroupIndex: _followState.currentGroupIndex || 0,
             currentIndexInGroup: _followState.currentIndexInGroup || 0,
+            listScrollY: _followState.listScrollY || 0,
             exhausted: _followState.exhausted,
             apiNextUrl: _followState.apiNextUrl,
             apiStarted: _followState.apiStarted
@@ -219,8 +220,10 @@
             });
             if (!batch.length) { _followState.exhausted = true; persistFollowFeedCache(); return []; }
             _followState.groups = normalizeFollowGroups(_followState.groups.concat([batch]));
-            _followState.currentGroupIndex = _followState.groups.length - 1;
-            _followState.currentIndexInGroup = 0;
+            if (options.switchToNewGroup !== false) {
+                _followState.currentGroupIndex = _followState.groups.length - 1;
+                _followState.currentIndexInGroup = 0;
+            }
             _followState.currentIndex = getFollowGroupStartIndex(_followState.currentGroupIndex);
             persistFollowFeedCache();
             return batch;
@@ -240,10 +243,10 @@
             wrapper.appendChild(status);
         }
         if (status) status.textContent = `正在加载第 ${_followState.groups.length + 1} 组关注动态...`;
+        const keepScrollY = window.scrollY;
         try {
             const batch = await loadNextFollowGroup(status);
-            renderFollowList();
-            requestAnimationFrame(() => window.scrollTo(0, 0));
+            renderFollowList({ focusLatestBatch: batch.length > 0, previousScrollY: keepScrollY });
             return batch;
         } catch (e) {
             console.error('加载关注动态失败:', e);
@@ -296,6 +299,47 @@
         crossOriginSet('zh-follow-layout', layout);
     }
 
+    async function refreshFollowAfterScroll(sentinel, controller) {
+        if (_followState.loadingMore || _followState.exhausted || !sentinel.isConnected) return;
+        sentinel.classList.add('is-loading');
+        sentinel.textContent = '正在加载更多动态...';
+        try {
+            const batch = await loadNextFollowGroup(sentinel, { switchToNewGroup: false, label: '连续加载关注动态' });
+            if (batch.length) renderFollowList({ focusLatestBatch: true });
+            else {
+                disconnectFeedScrollController();
+                sentinel.classList.remove('is-loading');
+                sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+            }
+        } catch (error) {
+            sentinel.classList.remove('is-loading');
+            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
+            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
+        }
+    }
+
+    function prepareFollowScrollRefresh(wrapper) {
+        disconnectFeedScrollController();
+        if (config.homeFeedMode !== 'scroll') return;
+        const sentinel = wrapper.querySelector('#zh-follow-scroll-sentinel') || document.createElement('div');
+        sentinel.id = 'zh-follow-scroll-sentinel';
+        sentinel.className = 'zh-home-scroll-status';
+        if (_followState.exhausted) {
+            sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+            if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+            return;
+        }
+        sentinel.textContent = '';
+        if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+        return () => {
+            if (_followState.collecting || !sentinel.isConnected) return null;
+            return setupFeedScrollController({
+                sentinel,
+                onRefresh: controller => refreshFollowAfterScroll(sentinel, controller)
+            });
+        };
+    }
+
     function renderFollowGroupToolbar(wrapper) {
         const groups = normalizeFollowGroups(_followState.groups);
         const groupIndex = Math.max(0, Math.min(_followState.currentGroupIndex || 0, Math.max(0, groups.length - 1)));
@@ -311,15 +355,20 @@
             return btn;
         };
 
-        // 切回首页推荐：直接跳转 URL，脚本自动重新加载
-        toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setFollowGroup(groupIndex - 1)));
         const indicator = document.createElement('span');
         indicator.className = 'zh-home-nav-indicator';
-        indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
-        toolbar.appendChild(indicator);
-        toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setFollowGroup(groupIndex + 1)));
-        if (!_followState.exhausted) {
-            toolbar.appendChild(makeBtn('加载更多', '+', _followState.loadingMore, () => loadMoreFollowAndRender()));
+        if (config.homeFeedMode === 'scroll') {
+            indicator.classList.add('zh-home-scroll-count');
+            indicator.textContent = `已加载 ${syncFollowItemsFromGroups().length} 条`;
+            toolbar.appendChild(indicator);
+        } else {
+            toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setFollowGroup(groupIndex - 1)));
+            indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
+            toolbar.appendChild(indicator);
+            toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setFollowGroup(groupIndex + 1)));
+            if (!_followState.exhausted) {
+                toolbar.appendChild(makeBtn('加载更多', '+', _followState.loadingMore, () => loadMoreFollowAndRender()));
+            }
         }
 
         const layoutBtn = document.createElement('button');
@@ -358,9 +407,11 @@
         return line;
     }
 
-    function renderFollowList() {
+    function renderFollowList(options = {}) {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        const previousScrollY = window.scrollY;
+        disconnectFeedScrollController();
         _followState.view = 'list';
         restoreLiveMount();
         clearQuestionTranslations();
@@ -373,9 +424,15 @@
         appendFeedSwitchHeader(wrapper, 'follow');
         renderFollowGroupToolbar(wrapper);
 
-        const group = getCurrentFollowGroup();
-        const groupIndex = _followState.currentGroupIndex || 0;
-        if (!group.length) {
+        const scrollMode = config.homeFeedMode === 'scroll';
+        const groups = scrollMode ? normalizeFollowGroups(_followState.groups) : [getCurrentFollowGroup()];
+        const groupOffset = scrollMode ? 0 : (_followState.currentGroupIndex || 0);
+        const entries = groups.flatMap((group, batchIndex) => group.map((itemRecord, indexInGroup) => ({
+            itemRecord,
+            groupIndex: groupOffset + batchIndex,
+            indexInGroup
+        })));
+        if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'zh-collect-status';
             empty.textContent = '没有采集到可展示的关注动态。';
@@ -385,7 +442,17 @@
 
         const timeline = document.createElement('div');
         timeline.className = 'zh-follow-timeline' + (isDouble ? ' zh-follow-grid' : '');
-        group.forEach((itemRecord, index) => {
+        entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
+            if (scrollMode && indexInGroup === 0 && groupIndex > 0) {
+                const divider = document.createElement('div');
+                divider.className = 'zh-feed-batch-divider';
+                const createdTimestamp = Number(itemRecord.createdTime);
+                const batchDate = Number.isFinite(createdTimestamp) && createdTimestamp > 0
+                    ? new Date(createdTimestamp > 1e12 ? createdTimestamp : createdTimestamp * 1000).toLocaleDateString()
+                    : '继续浏览';
+                divider.innerHTML = `<span>第 ${groupIndex + 1} 批 · ${batchDate}</span>`;
+                timeline.appendChild(divider);
+            }
             const moment = document.createElement('div');
             moment.className = 'zh-moment';
             moment.appendChild(buildMomentActionLine(itemRecord));
@@ -403,12 +470,28 @@
                 card.appendChild(snippet);
             }
             moment.appendChild(card);
-            moment.addEventListener('click', () => renderFollowItem(index, groupIndex));
+            moment.addEventListener('click', () => {
+                _followState.listScrollY = window.scrollY;
+                renderFollowItem(indexInGroup, groupIndex);
+            });
             timeline.appendChild(moment);
         });
         wrapper.appendChild(timeline);
+        const activateScrollRefresh = prepareFollowScrollRefresh(wrapper);
         setupImageToggles();
-        window.scrollTo(0, 0);
+        const latestDivider = Array.from(timeline.querySelectorAll('.zh-feed-batch-divider')).pop();
+        const targetScrollY = options.focusLatestBatch
+            ? getFeedAnchorScrollTop(latestDivider)
+            : (options.restoreScroll ? _followState.listScrollY : options.preserveScroll ? previousScrollY : null);
+        const positionList = () => {
+            window.scrollTo(0, options.focusLatestBatch || options.restoreScroll || options.preserveScroll ? targetScrollY || 0 : 0);
+            if (options.startScrollRefresh !== false) {
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
+        };
+        if (options.focusLatestBatch || options.restoreScroll || options.preserveScroll) requestAnimationFrame(positionList);
+        else positionList();
+        return () => requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
     }
 
     function setCurrentFollowItem(indexInGroup = 0, groupIndex = _followState.currentGroupIndex) {
@@ -473,6 +556,7 @@
         const position = setCurrentFollowItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+        disconnectFeedScrollController();
 
         logFollowItemReadingRecord(itemRecord);
 
@@ -538,12 +622,13 @@
     // 载入 follow 数据到 _followState（缓存优先），返回是否有内容
     async function ensureFollowDataLoaded(status) {
         const cached = _followFeedCache.get(getFollowCacheKey());
-        if (cached?.schemaVersion === 2 && Array.isArray(cached.groups) && cached.groups.length) {
+        if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
             _followState.groups = normalizeFollowGroups(cached.groups);
             syncFollowItemsFromGroups();
             _followState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _followState.groups.length - 1));
             _followState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_followState.groups[_followState.currentGroupIndex]?.length || 1) - 1));
             _followState.currentIndex = getFollowGroupStartIndex(_followState.currentGroupIndex) + _followState.currentIndexInGroup;
+            _followState.listScrollY = cached.listScrollY || 0;
             _followState.exhausted = !!cached.exhausted;
             _followState.apiNextUrl = cached.apiNextUrl || '';
             _followState.apiStarted = !!cached.apiStarted;
@@ -567,6 +652,7 @@
     async function switchHomeToFollowInPlace() {
         if (_followState.collecting) return;
         if (!document.getElementById('immersive-wrapper')) { location.href = location.origin + '/follow'; return; }
+        if (_homeState.view === 'list') _homeState.listScrollY = window.scrollY;
         // 已有数据：直接就地渲染，不弹遮罩、不停顿，保证来回切换丝滑
         if (_followState.groups?.length) { renderFollowList(); return; }
         _followState.collecting = true;
@@ -575,7 +661,9 @@
             const ok = await ensureFollowDataLoaded(status);
             removeCollectOverlay();
             if (!ok) { alert('未能通过 API 加载到关注动态（请确认已登录知乎）。'); return; }
-            renderFollowList();
+            const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
+            _followState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             alert(`切换关注动态失败：${err.message}`);
@@ -588,7 +676,7 @@
     // 否则（真的在 /follow 路由）跳转首页让脚本重新加载。
     function switchFollowToHomeInPlace() {
         if (isHomePage() && document.getElementById('immersive-wrapper') && _homeState.items?.length) {
-            renderHomeList();
+            renderHomeList({ restoreScroll: true });
             return;
         }
         location.href = location.origin + '/';
@@ -619,7 +707,9 @@
             _articleNode = wrapper;
             createQuestionToolsPanel();
             window._isImmersive = true;
-            renderFollowList();
+            const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
+            _followState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;

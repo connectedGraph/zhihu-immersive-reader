@@ -2351,7 +2351,7 @@
                     if (prevView === 'item') {
                         renderHomeItem(_homeState.currentIndexInGroup, _homeState.currentGroupIndex);
                     } else {
-                        renderHomeList();
+                        renderHomeList({ restoreScroll: true });
                     }
                 } else if (prevPage === 'question') {
                     if (prevView === 'list') {
@@ -2368,6 +2368,14 @@
 
             const scrollY = _personalSpaceBackup.scrollTop || window._zhPrevScrollY || 0;
             window.scrollTo(0, scrollY);
+            if (siblingCount > 0 && prevView === 'list') {
+                const activateScrollRefresh = prevPage === 'home'
+                    ? prepareHomeScrollRefresh(wrapper)
+                    : prevPage === 'follow'
+                        ? prepareFollowScrollRefresh(wrapper)
+                        : null;
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
 
             // 重置备份状态
             _personalSpaceBackup = {
@@ -2410,6 +2418,7 @@
     async function renderPersonalSpaceDashboard(activeTab = 'dashboard') {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        disconnectFeedScrollController();
 
         // 记录进入空间前的原始视图和滚动位置，防止销毁 DOM 导致退出后黑屏/白屏
         if (_homeState.view !== 'personal-space' && _questionState.view !== 'personal-space') {
@@ -2421,6 +2430,7 @@
             _personalSpaceBackup.questionView = _questionState.view || '';
             _personalSpaceBackup.followView = _followState.view || '';
             _personalSpaceBackup.scrollTop = window.scrollY;
+            if (_homeState.view === 'list') _homeState.listScrollY = window.scrollY;
             _personalSpaceBackup.hasTopNav = wrapper.classList.contains('zh-has-top-nav');
             _personalSpaceBackup.hasHomeWide = wrapper.classList.contains('zh-home-wide');
 

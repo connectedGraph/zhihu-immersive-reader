@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.0.3
+// @version      5.10
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -50,6 +50,7 @@ const THEMES = [
 
 // 自定义主题：localStorage 键 + 各 CSS 变量对应 UI 部位的中文指引
 const CUSTOM_THEMES_KEY = 'zh-immersive-custom-themes-v1';
+const CUSTOM_FONT_STORAGE_KEY = 'zh-immersive-custom-font-v1';
 const THEME_VAR_GUIDE = [
     { key: '--zh-bg', label: '页面背景', desc: '整个页面最外层的底色', def: '#E5DEC9' },
     { key: '--zh-paper', label: '卡片/纸张', desc: '文章正文、卡片、弹窗的纸面色', def: '#F8F4E6' },
@@ -60,6 +61,46 @@ const THEME_VAR_GUIDE = [
     { key: '--zh-quote', label: '引用/浅底块', desc: '引用块、开关轨道、浅色背景块', def: '#f0ebe1' },
     { key: '--zh-code', label: '代码块底色', desc: '代码块 / Wiki 输出区底色', def: '#eae5d9' },
     { key: '--zh-modal-bg', label: '弹窗背景', desc: '设置等模态弹窗的背景色', def: '#F8F4E6' }
+];
+
+// 阅读字体候选。优先使用已安装的本机字体，缺失时按字体栈逐级回退。
+const FONT_PRESETS = [
+    {
+        id: 'classic-serif',
+        name: '经典书卷',
+        desc: '楷体与衬线字体，保留原有阅读观感',
+        stack: `'Times New Roman', 'STKaiti', 'KaiTi', '楷体', serif`
+    },
+    {
+        id: 'system-sans',
+        name: '系统黑体',
+        desc: '优先匹配当前系统的中文界面字体',
+        stack: `system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'source-han-sans',
+        name: '思源黑体',
+        desc: '思源黑体或 Noto Sans CJK，未安装时回退到系统黑体',
+        stack: `'Source Han Sans SC', 'Noto Sans CJK SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'modern-sans',
+        name: '现代黑体',
+        desc: '优先使用 HarmonyOS Sans、MiSans 等现代中文黑体',
+        stack: `'HarmonyOS Sans SC', 'MiSans', 'OPPO Sans', 'vivo Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif`
+    },
+    {
+        id: 'source-han-serif',
+        name: '思源宋体',
+        desc: '适合长文的中文衬线字体',
+        stack: `'Source Han Serif SC', 'Noto Serif CJK SC', 'Noto Serif SC', 'Songti SC', 'SimSun', serif`
+    },
+    {
+        id: 'lxgw-wenkai',
+        name: '霞鹜文楷',
+        desc: '优先使用本机霞鹜文楷，缺失时回退到楷体',
+        stack: `'LXGW WenKai', 'LXGW WenKai Screen', 'STKaiti', 'KaiTi', serif`
+    }
 ];
 
 // ----- 默认配置 -----
@@ -83,7 +124,12 @@ const DEFAULT_CONFIG = {
     embeddingHost: '',
     embeddingModel: 'text-embedding-3-small',
     embeddingKey: '',
-    defaultCollectionId: ''
+    defaultCollectionId: '',
+    fontPreset: 'classic-serif',
+    customFontSource: 'none',
+    customFontUrl: '',
+    customFontName: '',
+    homeFeedMode: 'scroll'
 };
 
 const EXPORT_HIDDEN_SELECTORS = [
@@ -137,12 +183,13 @@ const ICONS = {
     toread: `<svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`
 };
 
+
 // ═══════════════════════════════════════════════════════════
 // 模块: styles.js
 // ═══════════════════════════════════════════════════════════
 // ----- 核心样式 (动态注入的 <style> 内容) -----
 const STYLE_CSS = `
-    body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: 'Times New Roman', 'KaiTi', 'STKaiti', serif !important; transition: background-color 0.5s ease !important; }
+    body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: var(--zh-reader-font, 'Times New Roman', 'KaiTi', 'STKaiti', serif) !important; transition: background-color 0.5s ease !important; }
     .AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar, .css-1nalqj2, .zh-hidden-by-immersive { display: none !important; position: static !important; visibility: hidden !important; }
     #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; transition: all 0.5s ease !important; }
     #immersive-wrapper h1, #immersive-wrapper h2, #immersive-wrapper h3 { font-weight: bold; color: var(--zh-title) !important; border-bottom: 1px dashed var(--zh-border) !important; padding-bottom: 12px; margin-top: 1.5em; }
@@ -204,6 +251,11 @@ const STYLE_CSS = `
     .zh-home-card-meta img { width: 20px; height: 20px; border-radius: 3px; object-fit: cover; flex-shrink: 0; }
     .zh-home-card-snippet { font-size: 14px; color: var(--zh-text); opacity: 0.6; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
     .zh-home-card-type { display: inline-block; font-size: 11px; padding: 1px 5px; border-radius: 3px; background: var(--zh-quote); color: var(--zh-accent); border: 1px solid var(--zh-border); white-space: nowrap; }
+    .zh-home-card-stats { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 0; flex-wrap: wrap; border-top: 1px solid var(--zh-border); color: var(--zh-text); opacity: .58; font-size: 11px; line-height: 1.4; }
+    .zh-home-card-stats span + span::before { content: '·'; margin: 0 7px; opacity: .7; }
+    .zh-feed-batch-divider { grid-column: 1 / -1; min-height: 34px; margin: 18px 0 2px; display: flex; align-items: center; gap: 12px; color: var(--zh-text); opacity: .52; font-size: 11px; line-height: 1; }
+    .zh-feed-batch-divider::before, .zh-feed-batch-divider::after { content: ''; height: 1px; flex: 1; background: var(--zh-border); }
+    .zh-feed-batch-divider span { flex-shrink: 0; }
 
     /* 首页导航工具栏 */
     .zh-home-toolbar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; flex-wrap: wrap; }
@@ -213,6 +265,23 @@ const STYLE_CSS = `
     .zh-home-nav-icon { font-size: 16px; font-weight: bold; line-height: 1; }
     .zh-home-nav-indicator { font-size: 13px; color: var(--zh-text); opacity: 0.6; padding: 0 4px; white-space: nowrap; }
     .zh-home-layout-btn { margin-left: auto; }
+    .zh-home-scroll-count { min-height: 32px; display: inline-flex; align-items: center; }
+    .zh-home-scroll-status { min-height: 46px; margin-top: 18px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--zh-text); opacity: .58; font-size: 12px; }
+    .zh-home-scroll-status:not(.is-loading):empty { min-height: 2px; margin-top: 10px; }
+    .zh-home-scroll-status.is-loading::before { content: ''; width: 13px; height: 13px; border: 2px solid var(--zh-border); border-top-color: var(--zh-accent); border-radius: 50%; animation: zh-spin .75s linear infinite; }
+    .zh-home-scroll-retry { height: 30px; padding: 0 10px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-accent); cursor: pointer; font: inherit; }
+    .zh-feed-scroll-progress { position: fixed; z-index: 2147483645; bottom: 82px; left: 30px; width: 42px; height: 42px; display: grid; place-items: center; pointer-events: none; border: 1px solid var(--zh-border); border-radius: 50%; background: var(--zh-paper); color: var(--zh-text); box-shadow: 0 3px 12px rgba(0,0,0,.12); opacity: .34; transition: opacity .22s ease, transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease; }
+    .zh-feed-scroll-progress-bar { --zh-feed-progress-angle: 0deg; position: absolute; inset: 4px; border-radius: 50%; background: conic-gradient(var(--zh-accent) 0deg var(--zh-feed-progress-angle), color-mix(in srgb, var(--zh-border) 62%, transparent) var(--zh-feed-progress-angle) 360deg); will-change: background; }
+    .zh-feed-scroll-progress-bar::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--zh-paper); }
+    .zh-feed-scroll-progress-value { position: relative; z-index: 1; min-width: 24px; font-size: 9px; line-height: 1; color: var(--zh-text); opacity: .74; text-align: center; font-variant-numeric: tabular-nums; transition: color .18s ease, opacity .18s ease; }
+    .zh-feed-scroll-progress.is-at-end { opacity: .82; }
+    .zh-feed-scroll-progress.is-ready { opacity: 1; transform: scale(1.08); box-shadow: 0 4px 16px rgba(0,0,0,.16); animation: zh-feed-progress-ready .34s cubic-bezier(.2,.8,.2,1) both; }
+    .zh-feed-scroll-progress.is-loading .zh-feed-scroll-progress-bar { background: conic-gradient(var(--zh-accent) 0deg 92deg, transparent 92deg 360deg); animation: zh-feed-progress-loading .72s linear infinite; }
+    .zh-feed-scroll-progress.is-loading .zh-feed-scroll-progress-value { color: var(--zh-accent); opacity: 1; }
+    @keyframes zh-feed-progress-loading { to { transform: rotate(360deg); } }
+    @keyframes zh-feed-progress-ready { 0% { transform: scale(1); } 58% { transform: scale(1.12); } 100% { transform: scale(1.08); } }
+    @media (max-width: 640px) { .zh-feed-scroll-progress { bottom: 78px; left: 20px; width: 38px; height: 38px; } }
+    @media (prefers-reduced-motion: reduce) { .zh-feed-scroll-progress { transition: none; } .zh-feed-scroll-progress.is-ready, .zh-feed-scroll-progress.is-loading .zh-feed-scroll-progress-bar { animation: none; } }
     .zh-toread-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 6px; margin-left: auto; }
     .zh-toread-btn svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }
@@ -224,6 +293,8 @@ const STYLE_CSS = `
     #immersive-wrapper.zh-follow-wide.zh-follow-double { max-width: 1100px; }
     .zh-follow-timeline { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; animation: zh-page-enter 0.25s ease-out; }
     .zh-follow-timeline.zh-follow-grid { display: grid; grid-template-columns: repeat(2, 1fr); align-items: stretch; }
+    .zh-follow-timeline > .zh-feed-batch-divider { width: 100%; }
+    .zh-follow-timeline.zh-follow-grid > .zh-feed-batch-divider { grid-column: 1 / -1; }
     .zh-follow-grid .zh-moment { height: 220px; display: flex; flex-direction: column; overflow: hidden; }
     .zh-follow-grid .zh-moment-card { flex: 1; min-height: 0; }
     .zh-follow-grid .zh-moment-snippet { -webkit-line-clamp: 5; }
@@ -440,6 +511,171 @@ const STYLE_CSS = `
     .zh-modal-body { padding: 25px 20px; font-size: 0.95em; line-height: 1.8; max-height: 70vh; overflow-y: auto; }
     .zh-modal-body input { background: var(--zh-code); border: 1px solid var(--zh-border); color: var(--zh-text); padding: 8px; border-radius: 4px; outline: none; }
     .zh-modal-body input:focus { border-color: var(--zh-accent); }
+
+    /* 全屏设置页 */
+    #zh-settings-modal { align-items: stretch; justify-content: stretch; padding: 0; background: var(--zh-bg); z-index: 99999999; }
+    #zh-settings-modal .zh-modal { width: 100%; height: 100%; max-width: none; border: 0; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; letter-spacing: 0; overflow: hidden; animation: none; }
+    #zh-settings-modal .zh-modal-header { min-height: 64px; box-sizing: border-box; padding: 0 32px; flex-shrink: 0; border-bottom: 1px solid var(--zh-border); background: var(--zh-paper); font-size: 18px; color: var(--zh-title); }
+    #zh-settings-modal .zh-modal-close { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--zh-text); font: 300 28px/1 system-ui, sans-serif; }
+    #zh-settings-modal .zh-modal-close:hover { background: var(--zh-quote); color: var(--zh-accent); }
+    #zh-settings-modal .zh-modal-body { padding: 0; max-height: none; min-height: 0; flex: 1; overflow: hidden; font-size: 14px; line-height: 1.5; }
+    #zh-settings-modal .zh-modal-body input,
+    #zh-settings-modal .zh-modal-body select,
+    #zh-settings-modal .zh-modal-body textarea,
+    #zh-settings-modal .zh-modal-body button { font-family: inherit; letter-spacing: 0; }
+
+    .zh-settings-page { display: flex; width: 100%; height: 100%; min-width: 0; color: var(--zh-text); background: var(--zh-modal-bg); }
+    .zh-settings-sidebar { width: 232px; padding: 28px 18px; box-sizing: border-box; flex-shrink: 0; background: var(--zh-quote); border-right: 1px solid var(--zh-border); }
+    .zh-settings-sidebar-label { margin: 0 12px 14px; color: var(--zh-text); opacity: .55; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .zh-settings-nav { display: flex; flex-direction: column; gap: 3px; }
+    .zh-settings-nav-btn { position: relative; width: 100%; min-height: 54px; padding: 8px 12px 8px 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--zh-text); text-align: left; cursor: pointer; }
+    .zh-settings-nav-btn::before { content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: transparent; }
+    .zh-settings-nav-btn:hover { background: var(--zh-paper); }
+    .zh-settings-nav-btn.is-active { background: var(--zh-paper); color: var(--zh-accent); }
+    .zh-settings-nav-btn.is-active::before { background: var(--zh-accent); }
+    .zh-settings-nav-btn span { font-size: 14px; font-weight: 650; line-height: 1.4; }
+    .zh-settings-nav-btn small { margin-top: 2px; font-size: 11px; color: var(--zh-text); opacity: .55; line-height: 1.3; }
+
+    .zh-settings-workspace { min-width: 0; flex: 1; display: flex; flex-direction: column; background: var(--zh-modal-bg); }
+    .zh-settings-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+    .zh-settings-section { width: min(880px, calc(100% - 64px)); margin: 0 auto; padding: 46px 0 72px; box-sizing: border-box; animation: zh-settings-section-in .18s ease both; }
+    .zh-settings-section[hidden] { display: none !important; }
+    @keyframes zh-settings-section-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    .zh-settings-section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 34px; padding-bottom: 22px; border-bottom: 1px solid var(--zh-border); }
+    .zh-settings-section-header h2 { margin: 4px 0 0; color: var(--zh-title); font-size: 25px; line-height: 1.25; font-weight: 700; }
+    .zh-settings-section-header p { max-width: 320px; margin: 0 0 2px; color: var(--zh-text); opacity: .62; font-size: 13px; text-align: right; }
+    .zh-settings-kicker { color: var(--zh-accent); font-size: 10px; font-weight: 800; }
+    .zh-settings-subsection h3 { margin: 0 0 18px; color: var(--zh-title); font-size: 16px; line-height: 1.4; }
+    .zh-settings-divider { height: 1px; margin: 32px 0; background: var(--zh-border); opacity: .85; }
+    .zh-settings-note { margin: 0 0 14px; max-width: 680px; color: var(--zh-text); opacity: .7; font-size: 13px; line-height: 1.7; }
+    .zh-settings-note-compact { margin: 10px 0 0; font-size: 11px; }
+
+    .zh-settings-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 22px; }
+    .zh-settings-field { min-width: 0; display: flex; flex-direction: column; gap: 7px; color: var(--zh-title); font-size: 13px; font-weight: 650; }
+    .zh-settings-field-wide { grid-column: 1 / -1; }
+    .zh-settings-field > small { color: var(--zh-text); opacity: .58; font-size: 11px; font-weight: 400; }
+    #zh-settings-modal .zh-settings-field input,
+    #zh-settings-modal .zh-settings-field select,
+    #zh-settings-modal .zh-settings-details textarea,
+    #zh-settings-modal .zh-settings-inline-actions > input { width: 100%; height: 40px; box-sizing: border-box; margin: 0; padding: 0 12px; border: 1px solid var(--zh-border); border-radius: 4px; outline: 0; background: var(--zh-code); color: var(--zh-text); font-size: 13px; }
+    #zh-settings-modal .zh-settings-field select { appearance: auto; }
+    #zh-settings-modal .zh-settings-field input:focus,
+    #zh-settings-modal .zh-settings-field select:focus,
+    #zh-settings-modal .zh-settings-details textarea:focus,
+    #zh-settings-modal .zh-settings-inline-actions > input:focus { border-color: var(--zh-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--zh-accent) 14%, transparent); }
+
+    .zh-settings-toggle-list { display: flex; flex-direction: column; }
+    .zh-settings-toggle { min-height: 64px; padding: 10px 2px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; cursor: pointer; border-bottom: 1px solid var(--zh-border); }
+    .zh-settings-toggle:last-child { border-bottom: 0; }
+    .zh-settings-toggle > span { min-width: 0; display: flex; flex-direction: column; }
+    .zh-settings-toggle b { color: var(--zh-title); font-size: 14px; font-weight: 650; }
+    .zh-settings-toggle small { margin-top: 3px; color: var(--zh-text); opacity: .58; font-size: 11px; }
+    .zh-settings-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+    .zh-settings-toggle i { position: relative; width: 38px; height: 22px; flex-shrink: 0; border-radius: 12px; background: var(--zh-border); transition: background .16s ease; }
+    .zh-settings-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--zh-paper); box-shadow: 0 1px 3px rgba(0,0,0,.18); transition: transform .16s ease; }
+    .zh-settings-toggle input:checked + i { background: var(--zh-accent); }
+    .zh-settings-toggle input:checked + i::after { transform: translateX(16px); }
+    .zh-settings-toggle input:focus-visible + i { outline: 2px solid var(--zh-accent); outline-offset: 2px; }
+
+    .zh-font-preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .zh-font-preset { min-width: 0; min-height: 82px; padding: 13px 14px; box-sizing: border-box; display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 12px; border: 1px solid var(--zh-border); border-radius: 6px; background: var(--zh-paper); cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+    .zh-font-preset:hover { border-color: var(--zh-accent); }
+    .zh-font-preset.is-selected { border-color: var(--zh-accent); background: var(--zh-quote); box-shadow: inset 3px 0 0 var(--zh-accent); }
+    .zh-font-preset input { position: absolute; opacity: 0; pointer-events: none; }
+    .zh-font-preset-sample { color: var(--zh-title); font: 24px/1.2 var(--zh-font-option); text-align: center; }
+    .zh-font-preset-copy { min-width: 0; display: flex; flex-direction: column; }
+    .zh-font-preset-copy b { color: var(--zh-title); font-size: 13px; }
+    .zh-font-preset-copy small { margin-top: 4px; color: var(--zh-text); opacity: .58; font-size: 10px; line-height: 1.45; }
+    .zh-font-preview { margin-top: 18px; padding: 22px 0; border-top: 1px solid var(--zh-border); border-bottom: 1px solid var(--zh-border); font-family: var(--zh-reader-font); }
+    .zh-font-preview > span { display: block; margin-bottom: 8px; color: var(--zh-accent); font: 700 10px/1.2 system-ui, sans-serif; }
+    .zh-font-preview p { margin: 0; color: var(--zh-title); font-size: 20px; line-height: 1.8; }
+
+    .zh-segmented-control { width: fit-content; max-width: 100%; display: inline-flex; padding: 3px; border: 1px solid var(--zh-border); border-radius: 6px; background: var(--zh-code); }
+    .zh-segmented-control label { cursor: pointer; }
+    .zh-segmented-control input { position: absolute; opacity: 0; pointer-events: none; }
+    .zh-segmented-control span { min-width: 76px; height: 32px; padding: 0 12px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--zh-text); font-size: 12px; }
+    .zh-segmented-control input:checked + span { background: var(--zh-paper); color: var(--zh-accent); box-shadow: 0 1px 4px rgba(0,0,0,.1); font-weight: 650; }
+    .zh-custom-font-panel { margin-top: 16px; }
+    .zh-custom-font-panel[hidden] { display: none !important; }
+    .zh-font-file-picker { min-height: 76px; padding: 14px 16px; box-sizing: border-box; display: flex; align-items: center; border: 1px dashed var(--zh-border); border-radius: 6px; background: var(--zh-code); cursor: pointer; }
+    .zh-font-file-picker:hover { border-color: var(--zh-accent); }
+    .zh-font-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .zh-font-file-picker span { display: flex; flex-direction: column; }
+    .zh-font-file-picker b { color: var(--zh-accent); font-size: 13px; }
+    .zh-font-file-picker small { margin-top: 4px; color: var(--zh-text); opacity: .62; font-size: 11px; }
+    .zh-settings-status { color: var(--zh-text); opacity: .68; font-size: 11px; line-height: 1.6; }
+    #zh-font-load-status { min-height: 18px; margin-top: 8px; }
+
+    .zh-theme-var-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+    .zh-theme-var-row { min-width: 0; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); }
+    #zh-settings-modal .zh-theme-var-row input[type="color"] { width: 30px; height: 30px; padding: 1px; flex-shrink: 0; border: 1px solid var(--zh-border); border-radius: 4px; background: transparent; cursor: pointer; }
+    .zh-theme-var-row span { min-width: 0; display: flex; flex-direction: column; }
+    .zh-theme-var-row b { color: var(--zh-title); font-size: 11px; }
+    .zh-theme-var-row small { overflow: hidden; color: var(--zh-text); opacity: .55; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .zh-settings-inline-actions { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .zh-settings-inline-actions > input { max-width: 360px; }
+    .zh-settings-inline-actions small { color: var(--zh-text); opacity: .55; font-size: 11px; }
+    #zh-settings-modal .zh-inline-btn,
+    #zh-settings-modal .zh-test-btn { width: auto; min-height: 36px; margin: 0; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--zh-border); border-radius: 4px; background: var(--zh-paper); color: var(--zh-text); font-size: 12px; font-weight: 600; cursor: pointer; }
+    #zh-settings-modal .zh-inline-btn:hover,
+    #zh-settings-modal .zh-test-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    #zh-settings-modal .zh-test-btn { margin-top: 16px; border-style: solid; }
+    #zh-settings-modal .zh-test-res { margin: 10px 0 0; padding: 10px 12px; border-radius: 4px; }
+    .zh-settings-details { margin-top: 14px; }
+    .zh-settings-details summary { width: fit-content; color: var(--zh-accent); font-size: 12px; cursor: pointer; }
+    #zh-settings-modal .zh-settings-details textarea { height: auto; min-height: 112px; margin: 10px 0 8px; padding: 10px 12px; resize: vertical; font-family: Consolas, monospace; line-height: 1.5; }
+    .zh-settings-list { margin-top: 14px; font-size: 12px; line-height: 1.6; }
+    .zh-collections-list { max-height: 360px; overflow-y: auto; }
+
+    #zh-settings-modal .zh-pwd-wrap { margin: 0; }
+    #zh-settings-modal .zh-eye-icon { right: 7px; width: 28px; height: 28px; padding: 5px; box-sizing: border-box; border: 0; border-radius: 4px; background: transparent; }
+    .zh-settings-footer { min-height: 68px; padding: 12px 32px; box-sizing: border-box; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--zh-border); background: var(--zh-paper); box-shadow: 0 -8px 24px rgba(0,0,0,.035); }
+    .zh-settings-footer > span { color: var(--zh-text); opacity: .55; font-size: 11px; }
+    .zh-settings-footer > div { display: flex; gap: 8px; }
+    .zh-settings-secondary-btn,
+    .zh-settings-primary-btn { min-width: 92px; height: 40px; padding: 0 16px; border-radius: 4px; font-size: 13px; font-weight: 650; cursor: pointer; }
+    .zh-settings-secondary-btn { border: 1px solid var(--zh-border); background: transparent; color: var(--zh-text); }
+    .zh-settings-secondary-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    .zh-settings-primary-btn { border: 1px solid var(--zh-accent); background: var(--zh-accent); color: var(--zh-paper); }
+    .zh-settings-primary-btn:hover { opacity: .88; }
+    .zh-settings-primary-btn:disabled { opacity: .55; cursor: wait; }
+
+    @media (max-width: 760px) {
+        #zh-settings-modal .zh-modal-header { min-height: 56px; padding: 0 16px; }
+        .zh-settings-page { flex-direction: column; }
+        .zh-settings-sidebar { width: 100%; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--zh-border); overflow-x: auto; }
+        .zh-settings-sidebar-label { display: none; }
+        .zh-settings-nav { width: max-content; min-width: 100%; flex-direction: row; gap: 2px; }
+        .zh-settings-nav-btn { width: auto; min-width: 88px; min-height: 44px; padding: 6px 12px; align-items: center; }
+        .zh-settings-nav-btn::before { left: 12px; right: 12px; top: auto; bottom: 0; width: auto; height: 2px; }
+        .zh-settings-nav-btn small { display: none; }
+        .zh-settings-section { width: calc(100% - 32px); padding: 28px 0 56px; }
+        .zh-settings-section-header { align-items: flex-start; margin-bottom: 26px; }
+        .zh-settings-section-header h2 { font-size: 22px; }
+        .zh-settings-section-header p { display: none; }
+        .zh-settings-footer { min-height: 62px; padding: 10px 16px; }
+        .zh-settings-footer > span { display: none; }
+        .zh-settings-footer > div { width: 100%; }
+        .zh-settings-secondary-btn, .zh-settings-primary-btn { flex: 1; }
+        .zh-theme-var-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 520px) {
+        .zh-settings-form-grid,
+        .zh-font-preset-grid { grid-template-columns: minmax(0, 1fr); }
+        .zh-settings-field-wide { grid-column: auto; }
+        .zh-theme-var-grid { grid-template-columns: minmax(0, 1fr); }
+        .zh-segmented-control { width: 100%; }
+        .zh-segmented-control label { flex: 1; }
+        .zh-segmented-control span { width: 100%; min-width: 0; padding: 0 6px; }
+        .zh-font-preview p { font-size: 17px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .zh-settings-section { animation: none; }
+        .zh-settings-toggle i,
+        .zh-settings-toggle i::after { transition: none; }
+    }
     
     @media print {
         @page {
@@ -693,127 +929,231 @@ const STYLE_CSS = `
     }
 `;
 
+
 // ═══════════════════════════════════════════════════════════
 // 模块: templates.js
 // ═══════════════════════════════════════════════════════════
 // ----- UI组件的HTML模板 (用于模态框等) -----
-const SETTINGS_MODAL_HTML = (cfg) => `
-    <label style="display:block; margin-bottom:5px;">API Host (记得带 /v1):</label>
-    <input type="text" id="zh-cfg-host" value="${cfg.apiHost}" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
-    
-    <label style="display:block; margin-bottom:5px;">模型名称 (Model):</label>
-    <input type="text" id="zh-cfg-model" value="${cfg.apiModel}" placeholder="gpt-3.5-turbo / deepseek-chat" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
+const escapeSettingsAttr = value => String(value ?? '').replace(/[&<>"]/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+}[ch]));
 
-    <label style="display:block; margin-bottom:5px;">API Key:</label>
-    <div class="zh-pwd-wrap">
-        <input type="password" id="zh-cfg-key" value="${cfg.apiKey}" placeholder="sk-xxxx">
-        <div id="zh-toggle-eye" class="zh-eye-icon" title="显示/隐藏">
-            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-        </div>
-    </div>
+const SETTINGS_MODAL_HTML = (cfg) => {
+    const fontPreset = FONT_PRESETS.some(item => item.id === cfg.fontPreset) ? cfg.fontPreset : 'classic-serif';
+    const customFontSource = ['none', 'url', 'file'].includes(cfg.customFontSource) ? cfg.customFontSource : 'none';
+    const homeFeedMode = cfg.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    return `
+    <div class="zh-settings-page">
+        <aside class="zh-settings-sidebar" aria-label="设置分类">
+            <div class="zh-settings-sidebar-label">设置分类</div>
+            <nav class="zh-settings-nav">
+                <button type="button" class="zh-settings-nav-btn is-active" data-section="reading"><span>个性化</span><small>阅读与首页</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="appearance"><span>字体与外观</span><small>排版与主题</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="ai"><span>AI 服务</span><small>主模型与配置组</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="knowledge"><span>知识库</span><small>向量与提示词</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="zhihu"><span>知乎互动</span><small>默认收藏夹</small></button>
+            </nav>
+        </aside>
 
-    <button id="zh-test-api-btn" class="zh-test-btn">⚡ 测试 API 连通性</button>
-    <div id="zh-test-res" class="zh-test-res"></div>
+        <div class="zh-settings-workspace">
+            <div class="zh-settings-scroll">
+                <section class="zh-settings-section is-active" data-section="reading">
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">PERSONALIZATION</span><h2>阅读与首页</h2></div>
+                        <p>控制推荐流、翻译、图片和列表预览。</p>
+                    </header>
+                    <div class="zh-settings-subsection">
+                        <h3>首页推荐浏览</h3>
+                        <div class="zh-segmented-control" role="radiogroup" aria-label="首页推荐浏览模式">
+                            <label><input type="radio" name="zh-home-feed-mode" value="paged" ${homeFeedMode === 'paged' ? 'checked' : ''}><span>分组翻页</span></label>
+                            <label><input type="radio" name="zh-home-feed-mode" value="scroll" ${homeFeedMode === 'scroll' ? 'checked' : ''}><span>连续滚动</span></label>
+                        </div>
+                        <p class="zh-settings-note zh-settings-note-compact">连续滚动仅在到达列表底部后开始累计；继续向下滚动约一个完整视口宽度，自动加载下一批 6 条内容。分组翻页使用独立的手动加载按钮。</p>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection"><h3>阅读辅助</h3></div>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide">
+                            <span>目标翻译语言 / 提示词</span>
+                            <input type="text" id="zh-cfg-lang" value="${escapeSettingsAttr(cfg.targetLang)}" placeholder="文言文 / 英文 / 现代汉语解释">
+                        </label>
+                        <label class="zh-settings-field zh-settings-field-wide">
+                            <span>阅读笔记兴趣标签</span>
+                            <input type="text" id="zh-cfg-radar-tags" value="${escapeSettingsAttr(cfg.radarInterestTags || '')}" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
+                        </label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-toggle-list">
+                        <label class="zh-settings-toggle"><span><b>自动生成全文摘要</b><small>进入沉浸阅读后生成上下文摘要</small></span><input type="checkbox" id="zh-cfg-autosum" ${cfg.autoSum ? 'checked' : ''}><i></i></label>
+                        <label class="zh-settings-toggle"><span><b>自动生成全文翻译</b><small>下次展卷生效，会产生较多模型调用</small></span><input type="checkbox" id="zh-cfg-autotr" ${cfg.autoTr ? 'checked' : ''}><i></i></label>
+                        <label class="zh-settings-toggle"><span><b>自动折叠正文图片</b><small>进入沉浸阅读时隐藏正文图片</small></span><input type="checkbox" id="zh-cfg-auto-hide-images" ${cfg.autoHideImages ? 'checked' : ''}><i></i></label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field">
+                            <span>图片交互方式</span>
+                            <select id="zh-cfg-image-mode">
+                                <option value="preview" ${cfg.imageMode !== 'collapse' ? 'selected' : ''}>弹出预览</option>
+                                <option value="collapse" ${cfg.imageMode === 'collapse' ? 'selected' : ''}>原位展开</option>
+                            </select>
+                        </label>
+                        <label class="zh-settings-field">
+                            <span>分享导出格式</span>
+                            <select id="zh-cfg-share-format">
+                                <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图</option>
+                                <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图</option>
+                                <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG</option>
+                                <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
+                            </select>
+                        </label>
+                        <label class="zh-settings-field">
+                            <span>回答列表预览</span>
+                            <select id="zh-cfg-answer-preview">
+                                <option value="excerpt" ${cfg.answerPreviewMode !== 'ai' ? 'selected' : ''}>摘录回答前文</option>
+                                <option value="ai" ${cfg.answerPreviewMode === 'ai' ? 'selected' : ''}>AI 摘要</option>
+                            </select>
+                        </label>
+                    </div>
+                </section>
 
-    <div style="border:1px dashed var(--zh-border); border-radius:4px; padding:10px 12px; margin:0 0 15px; background:var(--zh-quote);">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:8px;">API 配置组</div>
-        <label style="display:block; margin-bottom:5px;">已保存配置:</label>
-        <select id="zh-api-profile-select" style="width:100%; margin-bottom:8px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;"></select>
-        <label style="display:block; margin-bottom:5px;">配置名称:</label>
-        <input type="text" id="zh-api-profile-name" placeholder="例如：DeepSeek / OpenAI / 本地中转" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button id="zh-api-profile-apply" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">应用配置</button>
-            <button id="zh-api-profile-save" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">保存当前为配置</button>
-            <button id="zh-api-profile-new" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">新建配置</button>
-            <button id="zh-api-profile-delete" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">删除配置</button>
-        </div>
-        <div id="zh-api-profile-status" style="font-size:12px; opacity:.75; margin-top:8px;">配置组只保存 Host / Model / Key，不影响翻译语言和其它偏好。</div>
-    </div>
-    
-    <label style="display:block; margin-bottom:5px;">目标翻译语言 / 提示词:</label>
-    <input type="text" id="zh-cfg-lang" value="${cfg.targetLang}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="文言文 / 英文 / 现代汉语解释">
-    <label style="display:block; margin-bottom:5px;">阅读笔记兴趣标签:</label>
-    <input type="text" id="zh-cfg-radar-tags" value="${cfg.radarInterestTags || ''}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
-    
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autosum" ${cfg.autoSum ? 'checked' : ''}> 展卷时自动生成全文摘要</label>
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autotr" ${cfg.autoTr ? 'checked' : ''}> 展卷时异步生成全文翻译 (慎选，耗量大)下次生效</label>
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-auto-hide-images" ${cfg.autoHideImages ? 'checked' : ''}> 展卷时自动折叠正文图片</label>
-    <label style="display:block; margin-bottom:5px;">图片折叠后的交互方式:</label>
-    <select id="zh-cfg-image-mode" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="preview" ${cfg.imageMode !== 'collapse' ? 'selected' : ''}>弹出预览（点击占位符全屏查看，点击其他区域收回）</option>
-        <option value="collapse" ${cfg.imageMode === 'collapse' ? 'selected' : ''}>原位展开（点击占位符在原文位置展开图片，再点图片收起）</option>
-    </select>
-    <label style="display:block; margin-bottom:5px;">零损分享导出格式:</label>
-    <select id="zh-cfg-share-format" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（本地渲染 + 公共 API 兜底）</option>
-        <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图（本地渲染 + 公共 API 兜底）</option>
-        <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
-        <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
-    </select>
-    
-    <label style="display:block; margin-bottom:5px;">回答列表预览:</label>
-    <select id="zh-cfg-answer-preview" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="excerpt" ${cfg.answerPreviewMode !== 'ai' ? 'selected' : ''}>摘录回答前文</option>
-        <option value="ai" ${cfg.answerPreviewMode === 'ai' ? 'selected' : ''}>AI 摘要</option>
-    </select>
+                <section class="zh-settings-section" data-section="appearance" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">APPEARANCE</span><h2>字体与外观</h2></div>
+                        <p>选择本机字体栈，或载入自己的字体文件。</p>
+                    </header>
+                    <div class="zh-settings-subsection">
+                        <h3>阅读字体</h3>
+                        <div class="zh-font-preset-grid">
+                            ${FONT_PRESETS.map(item => `
+                                <label class="zh-font-preset ${item.id === fontPreset ? 'is-selected' : ''}" style="--zh-font-option:${item.stack}">
+                                    <input type="radio" name="zh-font-preset" value="${item.id}" ${item.id === fontPreset ? 'checked' : ''}>
+                                    <span class="zh-font-preset-sample">永 Aa</span>
+                                    <span class="zh-font-preset-copy"><b>${item.name}</b><small>${item.desc}</small></span>
+                                </label>
+                            `).join('')}
+                        </div>
+                        <div id="zh-font-preview" class="zh-font-preview">
+                            <span>字体预览</span>
+                            <p>不疾而速，沉静而有力量。The quick brown fox jumps over the lazy dog.</p>
+                        </div>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>自定义字体</h3>
+                        <div class="zh-segmented-control" role="radiogroup" aria-label="自定义字体来源">
+                            <label><input type="radio" name="zh-custom-font-source" value="none" ${customFontSource === 'none' ? 'checked' : ''}><span>不使用</span></label>
+                            <label><input type="radio" name="zh-custom-font-source" value="url" ${customFontSource === 'url' ? 'checked' : ''}><span>远程直链</span></label>
+                            <label><input type="radio" name="zh-custom-font-source" value="file" ${customFontSource === 'file' ? 'checked' : ''}><span>本地文件</span></label>
+                        </div>
+                        <div class="zh-custom-font-panel" data-font-source="url" ${customFontSource === 'url' ? '' : 'hidden'}>
+                            <label class="zh-settings-field zh-settings-field-wide"><span>字体文件地址</span><input type="url" id="zh-cfg-font-url" value="${escapeSettingsAttr(cfg.customFontUrl || '')}" placeholder="https://cdn.example.com/font.woff2"></label>
+                            <div class="zh-settings-inline-actions"><button type="button" id="zh-preview-font-url" class="zh-inline-btn">加载预览</button><small>使用字体文件直链，不是字体展示页或 CSS 地址。</small></div>
+                        </div>
+                        <div class="zh-custom-font-panel" data-font-source="file" ${customFontSource === 'file' ? '' : 'hidden'}>
+                            <label class="zh-font-file-picker" for="zh-cfg-font-file">
+                                <input type="file" id="zh-cfg-font-file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf">
+                                <span><b>选择字体文件</b><small id="zh-font-file-name">${escapeSettingsAttr(cfg.customFontName || '支持 WOFF2、WOFF、TTF、OTF，建议不超过 10 MB')}</small></span>
+                            </label>
+                        </div>
+                        <div id="zh-font-load-status" class="zh-settings-status" aria-live="polite"></div>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>自定义主题</h3>
+                        <div id="zh-theme-var-grid" class="zh-theme-var-grid">
+                            ${THEME_VAR_GUIDE.map(v => `
+                                <label class="zh-theme-var-row">
+                                    <input type="color" class="zh-theme-var" data-var="${v.key}" value="${v.def}">
+                                    <span><b>${v.label}</b><small>${v.desc}</small></span>
+                                </label>
+                            `).join('')}
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <input type="text" id="zh-theme-name" placeholder="主题名称">
+                            <button id="zh-add-theme-btn" type="button" class="zh-inline-btn">添加主题</button>
+                        </div>
+                        <details class="zh-settings-details">
+                            <summary>通过 JSON 导入主题</summary>
+                            <div class="zh-settings-inline-actions"><button id="zh-theme-tutorial-btn" type="button" class="zh-inline-btn">查看模板与字段说明</button></div>
+                            <textarea id="zh-theme-json" rows="5" placeholder="粘贴包含 name 和 vars 的主题对象"></textarea>
+                            <button id="zh-import-theme-btn" type="button" class="zh-inline-btn">导入主题</button>
+                        </details>
+                        <div id="zh-custom-theme-list" class="zh-settings-list"></div>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">首页信息流 Wiki</div>
-        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">采集条数 / 并发 / RPM / 今日总览 / Obsidian 格式等参数，已移至「个人空间 → Wiki 采集」启动时设置。</div>
-        <button id="zh-preview-prompts-btn" type="button" class="zh-test-btn">查看当前系统提示词</button>
-    </div>
+                <section class="zh-settings-section" data-section="ai" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">AI SERVICE</span><h2>主模型服务</h2></div>
+                        <p>翻译、摘要和学习卡片共用这套 OpenAI 兼容配置。</p>
+                    </header>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide"><span>API Host</span><input type="url" id="zh-cfg-host" value="${escapeSettingsAttr(cfg.apiHost)}" placeholder="https://api.example.com/v1"></label>
+                        <label class="zh-settings-field"><span>模型名称</span><input type="text" id="zh-cfg-model" value="${escapeSettingsAttr(cfg.apiModel)}" placeholder="deepseek-chat"></label>
+                        <label class="zh-settings-field"><span>API Key</span><div class="zh-pwd-wrap"><input type="password" id="zh-cfg-key" value="${escapeSettingsAttr(cfg.apiKey)}" placeholder="sk-xxxx"><button id="zh-toggle-eye" type="button" class="zh-eye-icon" title="显示 API Key"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div></label>
+                    </div>
+                    <button id="zh-test-api-btn" class="zh-test-btn">测试 API 连通性</button>
+                    <div id="zh-test-res" class="zh-test-res"></div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>API 配置组</h3>
+                        <div class="zh-settings-form-grid">
+                            <label class="zh-settings-field"><span>已保存配置</span><select id="zh-api-profile-select"></select></label>
+                            <label class="zh-settings-field"><span>配置名称</span><input type="text" id="zh-api-profile-name" placeholder="DeepSeek / OpenAI / 本地中转"></label>
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <button id="zh-api-profile-apply" type="button" class="zh-inline-btn">应用配置</button>
+                            <button id="zh-api-profile-save" type="button" class="zh-inline-btn">保存当前配置</button>
+                            <button id="zh-api-profile-new" type="button" class="zh-inline-btn">新建</button>
+                            <button id="zh-api-profile-delete" type="button" class="zh-inline-btn">删除</button>
+                        </div>
+                        <div id="zh-api-profile-status" class="zh-settings-status">配置组仅包含 Host、Model 和 Key。</div>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">Embedding 向量配置（语义搜索）</div>
-        <label style="display:block; margin-bottom:5px;">Embedding Host (带 /v1):</label>
-        <input type="text" id="zh-cfg-embedding-host" value="${cfg.embeddingHost || ''}" placeholder="https://api.openai.com/v1" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <label style="display:block; margin-bottom:5px;">Embedding 模型:</label>
-        <input type="text" id="zh-cfg-embedding-model" value="${cfg.embeddingModel || 'text-embedding-3-small'}" placeholder="text-embedding-3-small" style="width:100%; margin-bottom:4px; box-sizing:border-box;">
-        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">⚠️ 更换模型会使已有向量失效（不同模型向量不兼容）。保存时会提示你清空旧向量并重跑，或保留旧向量、放弃本次更换。</div>
-        <label style="display:block; margin-bottom:5px;">Embedding Key (留空则复用 LLM Key):</label>
-        <input type="password" id="zh-cfg-embedding-key" value="${cfg.embeddingKey || ''}" placeholder="留空则使用上方 API Key" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-    </div>
-    
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">知乎互动 · 收藏夹</div>
-        <label style="display:block; margin-bottom:5px;">默认收藏夹 ID（用于一键收藏推荐流卡片）：</label>
-        <input type="text" id="zh-cfg-collection-id" value="${cfg.defaultCollectionId || ''}" placeholder="例如 905152952" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-            <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">拉取我的收藏夹</button>
-            <span id="zh-fetch-collections-status" style="font-size:12px; opacity:.7; align-self:center;"></span>
-        </div>
-        <div id="zh-collections-list" style="font-size:13px; line-height:1.7; max-height:160px; overflow:auto;"></div>
-        <div style="font-size:12px; opacity:.7; margin-top:6px;">点击列表中的收藏夹即可填入 ID。需登录知乎账号后操作。</div>
-    </div>
+                <section class="zh-settings-section" data-section="knowledge" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">KNOWLEDGE</span><h2>知识库与向量</h2></div>
+                        <p>配置语义搜索使用的 Embedding 服务。</p>
+                    </header>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide"><span>Embedding Host</span><input type="url" id="zh-cfg-embedding-host" value="${escapeSettingsAttr(cfg.embeddingHost || '')}" placeholder="留空则复用主 API Host"></label>
+                        <label class="zh-settings-field"><span>Embedding 模型</span><input type="text" id="zh-cfg-embedding-model" value="${escapeSettingsAttr(cfg.embeddingModel || 'text-embedding-3-small')}" placeholder="text-embedding-3-small"><small>更换模型后，已有向量需要重新生成。</small></label>
+                        <label class="zh-settings-field"><span>Embedding Key</span><input type="password" id="zh-cfg-embedding-key" value="${escapeSettingsAttr(cfg.embeddingKey || '')}" placeholder="留空则复用主 API Key"></label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>Wiki 采集</h3>
+                        <p class="zh-settings-note">采集条数、并发、RPM、今日总览和 Obsidian 格式在“个人空间 → Wiki 采集”启动时设置。</p>
+                        <button id="zh-preview-prompts-btn" type="button" class="zh-inline-btn">查看当前系统提示词</button>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:6px;">自定义主题（上传配色）</div>
-        <div style="font-size:12px; opacity:.75; margin-bottom:10px; line-height:1.6;">为每个颜色选择色值，下方括号说明该颜色对应界面的哪个部位。命名后点「添加主题」即可保存到本地，随取色按钮循环切换。</div>
-        <div id="zh-theme-var-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:12px;">
-            ${THEME_VAR_GUIDE.map(v => `
-                <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
-                    <input type="color" class="zh-theme-var" data-var="${v.key}" value="${v.def}" style="width:34px; height:28px; padding:0; border:1px solid var(--zh-border); border-radius:4px; background:none; cursor:pointer; flex-shrink:0;">
-                    <span style="min-width:0;"><b>${v.label}</b><br><span style="opacity:.65; font-size:11px;">${v.desc}</span></span>
-                </label>
-            `).join('')}
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-            <input type="text" id="zh-theme-name" placeholder="主题名，如 🌙 夜读" style="flex:1; min-width:140px; box-sizing:border-box;">
-            <button id="zh-add-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px;">添加主题</button>
-        </div>
-        <details style="margin-bottom:8px;">
-            <summary style="cursor:pointer; font-size:13px; color:var(--zh-accent);">或粘贴 JSON 主题对象导入</summary>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin:6px 0;">
-                <button id="zh-theme-tutorial-btn" type="button" class="zh-inline-btn" style="padding:5px 10px; font-size:12px;">查看模板与字段说明</button>
+                <section class="zh-settings-section" data-section="zhihu" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">ZHIHU</span><h2>知乎互动</h2></div>
+                        <p>指定推荐流一键收藏使用的收藏夹。</p>
+                    </header>
+                    <label class="zh-settings-field zh-settings-field-wide"><span>默认收藏夹 ID</span><input type="text" id="zh-cfg-collection-id" value="${escapeSettingsAttr(cfg.defaultCollectionId || '')}" placeholder="例如 905152952"></label>
+                    <div class="zh-settings-inline-actions">
+                        <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn">拉取我的收藏夹</button>
+                        <span id="zh-fetch-collections-status" class="zh-settings-status"></span>
+                    </div>
+                    <div id="zh-collections-list" class="zh-settings-list zh-collections-list"></div>
+                </section>
             </div>
-            <textarea id="zh-theme-json" rows="4" placeholder="在此粘贴主题 JSON 对象（点上方按钮查看模板与字段说明）" style="width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12px;"></textarea>
-            <button id="zh-import-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px; margin-top:6px;">导入 JSON 主题</button>
-        </details>
-        <div id="zh-custom-theme-list" style="font-size:13px; line-height:1.7;"></div>
-    </div>
 
-    <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
-`;
+            <footer class="zh-settings-footer">
+                <span id="zh-settings-save-status">修改仅在保存后生效</span>
+                <div>
+                    <button id="zh-cancel-settings-btn" type="button" class="zh-settings-secondary-btn">取消</button>
+                    <button id="zh-save-settings-btn" type="button" class="zh-settings-primary-btn">保存并应用</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+    `;
+};
 
 const HELP_MODAL_HTML = `
     <div style="line-height:1.9;">
@@ -838,14 +1178,14 @@ const HELP_MODAL_HTML = `
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">首页与 Wiki</h3>
         <ul style="padding-left:20px; margin:0 0 14px;">
-            <li><strong>首页推荐</strong>：首组沿用页面已有 DOM，后续通过推荐 API 手动加载，每组 5 条，可在列表右上角切换推荐组。</li>
+            <li><strong>首页推荐</strong>：首组沿用页面已有 DOM，后续通过推荐 API 每批加载 6 条；可在个性化设置中选择分组翻页或连续滚动。</li>
             <li><strong>Wiki 图标</strong>：仅在首页显示。用于把已加载推荐流抓取全文、生成学习卡片和可复制/下载的 Markdown 日志。</li>
             <li><strong>Wiki Beta</strong>：当前仍偏实验功能，适合尝鲜和个人工作流验证，性能与体验还没有大量优化。</li>
         </ul>
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">设置与仓库</h3>
         <ul style="padding-left:20px; margin:0;">
-            <li><strong>设置图标</strong>：配置 OpenAI 兼容 API Host、模型、API Key、目标翻译语言、阅读笔记兴趣标签、分享格式、Wiki 参数等。</li>
+            <li><strong>设置图标</strong>：打开分类设置页，配置阅读字体、OpenAI 兼容 API、翻译、外观、知识库和知乎互动。</li>
             <li><strong>API 配置组</strong>：设置页可保存多组 Host / Model / Key，按需应用到当前 API 表单；不会改动翻译语言、Wiki 数量或其它阅读偏好。</li>
             <li><strong>仓库图标</strong>：侧边工具栏可直接跳转项目仓库。</li>
             <li><strong>仓库地址：</strong><a href="https://github.com/connectedGraph/zhihu-immersive-reader" target="_blank" rel="noopener noreferrer" style="color:var(--zh-accent);">https://github.com/connectedGraph/zhihu-immersive-reader</a></li>
@@ -897,7 +1237,7 @@ const HELP_MODAL_HTML = `
     const WIKI_HISTORY_MAX = 12;
     const HOME_BATCH_SIZE = 6;
     const HOME_RECOMMEND_API = 'https://www.zhihu.com/api/v3/feed/topstory/recommend';
-    const FOLLOW_BATCH_SIZE = 8;
+    const FOLLOW_BATCH_SIZE = 6;
     const FOLLOW_MOMENTS_API = 'https://www.zhihu.com/api/v3/moments';
     const TRANSLATION_CACHE_KEY = 'zh-immersive-translation-cache-v1';
     const TRANSLATION_CACHE_MAX = 800;
@@ -935,7 +1275,10 @@ const HELP_MODAL_HTML = `
             if (!remote || !newVal) return;
             try {
                 config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(newVal));
+                applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
                 if (window._isImmersive) setupImageToggles();
+                if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+                if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
             } catch (err) {
                 console.warn('知乎沉浸式阅读：同步配置失败', err);
             }
@@ -946,7 +1289,10 @@ const HELP_MODAL_HTML = `
         try {
             config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(event.newValue));
             if (typeof GM_setValue === 'function') GM_setValue('zh-immersive-config', event.newValue);
+            applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
             if (window._isImmersive) setupImageToggles();
+            if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+            if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
         } catch (err) {
             console.warn('知乎沉浸式阅读：同步配置失败', err);
         }
@@ -974,6 +1320,7 @@ const HELP_MODAL_HTML = `
         currentIndex: 0,
         currentGroupIndex: 0,
         currentIndexInGroup: 0,
+        listScrollY: 0,
         view: '',
         collecting: false,
         loadingMore: false,
@@ -988,6 +1335,7 @@ const HELP_MODAL_HTML = `
         currentIndex: 0,
         currentGroupIndex: 0,
         currentIndexInGroup: 0,
+        listScrollY: 0,
         view: '',
         collecting: false,
         loadingMore: false,
@@ -1022,6 +1370,7 @@ const HELP_MODAL_HTML = `
         hasTopNav: false,
         hasHomeWide: false
     };
+
 
 // ═══════════════════════════════════════════════════════════
 // 模块: api-profiles.js
@@ -2561,6 +2910,135 @@ const HELP_MODAL_HTML = `
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
         try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
         try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：字体加载失败', err));
+    }
+
+    let _activeCustomFontFace = null;
+    let _loadedCustomFontKey = '';
+    let _fontApplyRequestId = 0;
+
+    function getFontPreset(id) {
+        return FONT_PRESETS.find(item => item.id === id) || FONT_PRESETS[0];
+    }
+
+    function getStoredCustomFont() {
+        try {
+            const raw = crossOriginGet(CUSTOM_FONT_STORAGE_KEY);
+            if (!raw) return null;
+            const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return record && record.dataUrl ? record : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function persistCustomFont(record) {
+        crossOriginSet(CUSTOM_FONT_STORAGE_KEY, JSON.stringify(record));
+        const stored = getStoredCustomFont();
+        if (!stored || stored.name !== record.name || stored.size !== record.size || stored.lastModified !== record.lastModified || stored.dataUrl?.length !== record.dataUrl.length) {
+            throw new Error('字体文件未能写入扩展存储，请改用体积更小的 WOFF2 文件');
+        }
+    }
+
+    function dataUrlToArrayBuffer(dataUrl) {
+        const comma = String(dataUrl || '').indexOf(',');
+        if (comma < 0) throw new Error('字体文件数据不完整');
+        const bytes = atob(String(dataUrl).slice(comma + 1));
+        const buffer = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) buffer[i] = bytes.charCodeAt(i);
+        return buffer.buffer;
+    }
+
+    function readFontFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({
+                name: file.name,
+                type: file.type || '',
+                size: file.size,
+                lastModified: file.lastModified || 0,
+                dataUrl: String(reader.result || '')
+            });
+            reader.onerror = () => reject(new Error('无法读取字体文件'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function requestFontArrayBuffer(url) {
+        const parsed = new URL(url, location.href);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('字体地址仅支持 HTTP 或 HTTPS');
+        const gmRequest = typeof GM_xmlhttpRequest === 'function'
+            ? GM_xmlhttpRequest
+            : (typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null);
+        if (!gmRequest) {
+            return fetch(parsed.href).then(response => {
+                if (!response.ok) throw new Error(`字体下载失败（HTTP ${response.status}）`);
+                return response.arrayBuffer();
+            });
+        }
+        return new Promise((resolve, reject) => {
+            gmRequest({
+                method: 'GET',
+                url: parsed.href,
+                responseType: 'arraybuffer',
+                timeout: 30000,
+                onload: response => {
+                    if (response.status && (response.status < 200 || response.status >= 300)) {
+                        reject(new Error(`字体下载失败（HTTP ${response.status}）`));
+                        return;
+                    }
+                    if (!response.response) {
+                        reject(new Error('字体地址没有返回文件数据'));
+                        return;
+                    }
+                    resolve(response.response);
+                },
+                ontimeout: () => reject(new Error('字体下载超时')),
+                onerror: () => reject(new Error('字体下载失败，请检查直链是否可访问'))
+            });
+        });
+    }
+
+    async function applyReadingFont(settings = config, options = {}) {
+        const requestId = ++_fontApplyRequestId;
+        const preset = getFontPreset(settings.fontPreset);
+        const root = document.documentElement;
+        root.style.setProperty('--zh-reader-font', preset.stack, 'important');
+
+        const source = ['url', 'file'].includes(settings.customFontSource) ? settings.customFontSource : 'none';
+        if (source === 'none') return { custom: false, name: preset.name };
+
+        let fontData;
+        let fontKey;
+        let fontName = settings.customFontName || '自定义字体';
+        if (source === 'url') {
+            const url = String(settings.customFontUrl || '').trim();
+            if (!url) throw new Error('请填写字体文件直链');
+            const parsed = new URL(url, location.href);
+            if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('字体地址仅支持 HTTP 或 HTTPS');
+            fontKey = `url:${parsed.href}`;
+            try { fontName = decodeURIComponent(parsed.pathname.split('/').pop()) || fontName; } catch (e) {}
+            if (_loadedCustomFontKey !== fontKey) fontData = await requestFontArrayBuffer(parsed.href);
+        } else {
+            const record = options.customFontRecord || getStoredCustomFont();
+            if (!record?.dataUrl) throw new Error('请先选择本地字体文件');
+            fontKey = `file:${record.name || ''}:${record.size || record.dataUrl.length}:${record.lastModified || 0}`;
+            fontName = record.name || fontName;
+            if (_loadedCustomFontKey !== fontKey) fontData = dataUrlToArrayBuffer(record.dataUrl);
+        }
+
+        if (requestId !== _fontApplyRequestId) return { custom: false, name: fontName, stale: true };
+        if (_loadedCustomFontKey !== fontKey) {
+            const fontFace = new FontFace('ZhImmersiveCustomFont', fontData);
+            await fontFace.load();
+            if (requestId !== _fontApplyRequestId) return { custom: false, name: fontName, stale: true };
+            if (_activeCustomFontFace) document.fonts.delete(_activeCustomFontFace);
+            document.fonts.add(fontFace);
+            _activeCustomFontFace = fontFace;
+            _loadedCustomFontKey = fontKey;
+        }
+        root.style.setProperty('--zh-reader-font', `'ZhImmersiveCustomFont', ${preset.stack}`, 'important');
+        return { custom: true, name: fontName };
     }
 
     function sanitizeLLMHTML(content) {
@@ -2734,7 +3212,7 @@ const HELP_MODAL_HTML = `
             <div class="zh-modal">
                 <div class="zh-modal-header">
                     <span>${title}</span>
-                    <button class="zh-modal-close" id="${id}-close-btn">×</button>
+                    <button class="zh-modal-close" id="${id}-close-btn" type="button" aria-label="关闭" title="关闭">×</button>
                 </div>
                 <div class="zh-modal-body">${innerHTML}</div>
             </div>
@@ -2815,6 +3293,10 @@ function S2translate(id, title, innerHTML) {
     function readSettingsFromForm() {
         const shareFormat = document.getElementById('zh-cfg-share-format')?.value || 'svg';
         const imageMode = document.getElementById('zh-cfg-image-mode')?.value || 'preview';
+        const fontPreset = document.querySelector('input[name="zh-font-preset"]:checked')?.value || 'classic-serif';
+        const customFontSource = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
+        const homeFeedMode = document.querySelector('input[name="zh-home-feed-mode"]:checked')?.value || 'scroll';
+        const fontFileInput = document.getElementById('zh-cfg-font-file');
         return {
             ...readApiSettingsFromForm(),
             targetLang: document.getElementById('zh-cfg-lang').value,
@@ -2828,7 +3310,12 @@ function S2translate(id, title, innerHTML) {
             embeddingHost: (document.getElementById('zh-cfg-embedding-host')?.value || '').trim(),
             embeddingModel: (document.getElementById('zh-cfg-embedding-model')?.value || '').trim() || 'text-embedding-3-small',
             embeddingKey: (document.getElementById('zh-cfg-embedding-key')?.value || '').trim(),
-            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim()
+            defaultCollectionId: (document.getElementById('zh-cfg-collection-id')?.value || '').trim(),
+            fontPreset: FONT_PRESETS.some(item => item.id === fontPreset) ? fontPreset : 'classic-serif',
+            customFontSource: ['url', 'file'].includes(customFontSource) ? customFontSource : 'none',
+            customFontUrl: (document.getElementById('zh-cfg-font-url')?.value || '').trim(),
+            customFontName: fontFileInput?.dataset.fontName || config.customFontName || '',
+            homeFeedMode: homeFeedMode === 'scroll' ? 'scroll' : 'paged'
         };
     }
 
@@ -2856,41 +3343,58 @@ function S2translate(id, title, innerHTML) {
     function showSettingsModal() {
         if(document.getElementById('zh-settings-modal')) return;
 
-        const getFormSnapshot = () => JSON.stringify(readSettingsFromForm());
+        let pendingFontRecord = null;
+        let pendingFontToken = '';
+        const getFormSnapshot = () => JSON.stringify({ settings: readSettingsFromForm(), pendingFontToken });
         let initialSnapshot = '';
 
         function closeSettingsModal() {
+            applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：恢复字体失败', err));
             document.getElementById('zh-settings-modal')?.remove();
         }
 
         async function commitSettingsSave(onDone) {
             const next = readSettingsFromForm();
+            const saveButton = document.getElementById('zh-save-settings-btn');
+            const saveStatus = document.getElementById('zh-settings-save-status');
+            if (saveButton) saveButton.disabled = true;
+            if (saveStatus) saveStatus.textContent = '正在验证并应用设置...';
             const prevModel = (config.embeddingModel || '').trim();
             const nextModel = (next.embeddingModel || '').trim();
-            if (nextModel && prevModel && nextModel !== prevModel) {
-                let hasEmbeddings = false;
-                try {
-                    hasEmbeddings = (await getAllWikiCards()).some(c => c.embedding && c.embedding.length);
-                } catch (e) {}
-                if (hasEmbeddings) {
-                    const ok = window.confirm(`检测到 Embedding 模型从「${prevModel}」改为「${nextModel}」。\n\n不同模型生成的向量互不兼容，旧向量将无法用于语义搜索。\n\n点「确定」：清空全部已有向量（卡片正文保留），之后可重新跑 Embedding；\n点「取消」：保留旧向量，本次不更换模型。`);
-                    if (!ok) {
-                        next.embeddingModel = prevModel;
-                    } else {
-                        try {
+            try {
+                const fontResult = await applyReadingFont(next, { customFontRecord: pendingFontRecord });
+                if (fontResult.stale) throw new Error('字体选择在保存过程中发生变化，请重新保存');
+                if (fontResult.custom) next.customFontName = fontResult.name;
+                if (next.customFontSource === 'file' && pendingFontRecord) persistCustomFont(pendingFontRecord);
+                if (nextModel && prevModel && nextModel !== prevModel) {
+                    let hasEmbeddings = false;
+                    try {
+                        hasEmbeddings = (await getAllWikiCards()).some(c => c.embedding && c.embedding.length);
+                    } catch (e) {}
+                    if (hasEmbeddings) {
+                        const ok = window.confirm(`检测到 Embedding 模型从「${prevModel}」改为「${nextModel}」。\n\n不同模型生成的向量互不兼容，旧向量将无法用于语义搜索。\n\n点「确定」：清空全部已有向量（卡片正文保留），之后可重新跑 Embedding；\n点「取消」：保留旧向量，本次不更换模型。`);
+                        if (!ok) {
+                            next.embeddingModel = prevModel;
+                        } else {
                             const cleared = await clearAllCardEmbeddings();
                             showToast(`已清空 ${cleared} 条旧向量`);
-                        } catch (e) {
-                            alert('清空旧向量失败：' + e.message);
-                            return;
                         }
                     }
                 }
+                saveConfig(next);
+                if (window._isImmersive) setupImageToggles();
+                if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+                if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
+                onDone?.();
+                showToast('设置已保存');
+            } catch (e) {
+                const message = e?.message || String(e);
+                if (saveStatus) saveStatus.textContent = `无法保存：${message}`;
+                showToast(`设置未保存：${message}`);
+                activateSettingsSection('appearance');
+            } finally {
+                if (saveButton?.isConnected) saveButton.disabled = false;
             }
-            saveConfig(next);
-            if (window._isImmersive) setupImageToggles();
-            onDone?.();
-            showToast('设置已保存');
         }
 
         function tryClose() {
@@ -2903,8 +3407,107 @@ function S2translate(id, title, innerHTML) {
             }
         }
 
-        createModal('zh-settings-modal', '⚙️ 设置偏好', SETTINGS_MODAL_HTML(config), tryClose);
+        createModal('zh-settings-modal', '设置', SETTINGS_MODAL_HTML(config), tryClose);
+        const settingsModal = document.getElementById('zh-settings-modal');
+        const fontFileInput = document.getElementById('zh-cfg-font-file');
+        if (fontFileInput) fontFileInput.dataset.fontName = config.customFontName || '';
+
+        function activateSettingsSection(sectionName) {
+            settingsModal.querySelectorAll('.zh-settings-nav-btn').forEach(button => {
+                button.classList.toggle('is-active', button.dataset.section === sectionName);
+            });
+            settingsModal.querySelectorAll('.zh-settings-section').forEach(section => {
+                const active = section.dataset.section === sectionName;
+                section.hidden = !active;
+                section.classList.toggle('is-active', active);
+            });
+            const scroll = settingsModal.querySelector('.zh-settings-scroll');
+            if (scroll) scroll.scrollTop = 0;
+        }
+
+        settingsModal.querySelectorAll('.zh-settings-nav-btn').forEach(button => {
+            button.addEventListener('click', () => activateSettingsSection(button.dataset.section));
+        });
+        document.getElementById('zh-cancel-settings-btn').addEventListener('click', tryClose);
+        function updateSettingsDirtyStatus() {
+            const status = document.getElementById('zh-settings-save-status');
+            if (status && initialSnapshot) status.textContent = getFormSnapshot() === initialSnapshot ? '没有未保存的修改' : '有未保存的修改';
+        }
+        settingsModal.addEventListener('input', updateSettingsDirtyStatus);
         requestAnimationFrame(() => { initialSnapshot = getFormSnapshot(); });
+
+        function setFontStatus(message, error = false) {
+            const status = document.getElementById('zh-font-load-status');
+            if (!status) return;
+            status.textContent = message;
+            status.style.color = error ? '#b42318' : 'var(--zh-text)';
+            status.style.opacity = error ? '1' : '.68';
+        }
+
+        function syncFontSourcePanels() {
+            const source = document.querySelector('input[name="zh-custom-font-source"]:checked')?.value || 'none';
+            settingsModal.querySelectorAll('.zh-custom-font-panel').forEach(panel => {
+                panel.hidden = panel.dataset.fontSource !== source;
+            });
+        }
+
+        async function previewCurrentFont() {
+            try {
+                setFontStatus('正在加载字体...');
+                const result = await applyReadingFont(readSettingsFromForm(), { customFontRecord: pendingFontRecord });
+                setFontStatus(result.custom ? `已加载：${result.name}` : `已预览：${result.name}`);
+            } catch (e) {
+                setFontStatus(e?.message || String(e), true);
+            }
+        }
+
+        settingsModal.querySelectorAll('input[name="zh-font-preset"]').forEach(input => {
+            input.addEventListener('change', () => {
+                settingsModal.querySelectorAll('.zh-font-preset').forEach(label => {
+                    label.classList.toggle('is-selected', label.contains(input) && input.checked);
+                });
+                previewCurrentFont();
+            });
+        });
+        settingsModal.querySelectorAll('input[name="zh-custom-font-source"]').forEach(input => {
+            input.addEventListener('change', () => {
+                syncFontSourcePanels();
+                if (input.checked && input.value !== 'url') previewCurrentFont();
+            });
+        });
+        syncFontSourcePanels();
+
+        fontFileInput?.addEventListener('change', async () => {
+            const file = fontFileInput.files?.[0];
+            if (!file) return;
+            const supported = /\.(woff2?|ttf|otf)$/i.test(file.name);
+            if (!supported) {
+                fontFileInput.value = '';
+                setFontStatus('仅支持 WOFF2、WOFF、TTF 或 OTF 文件', true);
+                return;
+            }
+            if (file.size > 25 * 1024 * 1024) {
+                fontFileInput.value = '';
+                setFontStatus('字体文件不能超过 25 MB，建议使用 WOFF2 压缩版本', true);
+                return;
+            }
+            try {
+                setFontStatus('正在读取字体文件...');
+                pendingFontRecord = await readFontFile(file);
+                pendingFontToken = `${file.name}:${file.size}:${file.lastModified}`;
+                fontFileInput.dataset.fontName = file.name;
+                document.getElementById('zh-font-file-name').textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+                const fileSourceRadio = settingsModal.querySelector('input[name="zh-custom-font-source"][value="file"]');
+                if (fileSourceRadio) fileSourceRadio.checked = true;
+                syncFontSourcePanels();
+                updateSettingsDirtyStatus();
+                await previewCurrentFont();
+            } catch (e) {
+                setFontStatus(e?.message || String(e), true);
+            }
+        });
+
+        document.getElementById('zh-preview-font-url').addEventListener('click', previewCurrentFont);
 
         // 绑定眼睛图标的切换事件
         document.getElementById('zh-toggle-eye').addEventListener('click', function() {
@@ -2930,7 +3533,12 @@ function S2translate(id, title, innerHTML) {
             try {
                 const testRes = await callLLM("你是一个连通性测试助手。请只回答'✅ 连接成功！'", "Test", apiSettings.apiKey, apiSettings.apiHost, apiSettings.apiModel);
                 saveConfig(apiSettings);
-                initialSnapshot = getFormSnapshot();
+                if (initialSnapshot) {
+                    const savedSnapshot = JSON.parse(initialSnapshot);
+                    Object.assign(savedSnapshot.settings, apiSettings);
+                    initialSnapshot = JSON.stringify(savedSnapshot);
+                }
+                updateSettingsDirtyStatus();
                 resDiv.style.color = 'green';
                 resDiv.innerText = `${testRes || '✅ 连接成功！'}\n已同步本次 Host / Key / Model，后续摘要会使用这套配置。`;
             } catch (err) {
@@ -5781,6 +6389,242 @@ ${page.xhtml}
 // ═══════════════════════════════════════════════════════════
 // 模块: page-home.js
 // ═══════════════════════════════════════════════════════════
+    let _feedScrollController = null;
+
+    function getHomeFeedMode() {
+        return config.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    }
+
+    function disconnectFeedScrollController() {
+        const controller = _feedScrollController;
+        if (!controller) return;
+        controller.destroy();
+        if (_feedScrollController === controller) _feedScrollController = null;
+    }
+
+    function setupFeedScrollController({ sentinel, onRefresh }) {
+        if (!sentinel?.isConnected || typeof onRefresh !== 'function') return null;
+        disconnectFeedScrollController();
+
+        const progress = document.createElement('div');
+        progress.className = 'zh-feed-scroll-progress';
+        progress.setAttribute('role', 'progressbar');
+        progress.setAttribute('aria-label', '下一批内容加载进度');
+        progress.setAttribute('aria-valuemin', '0');
+        progress.setAttribute('aria-valuemax', '100');
+        progress.setAttribute('aria-valuenow', '0');
+
+        const progressBar = document.createElement('div');
+        progressBar.className = 'zh-feed-scroll-progress-bar';
+        const progressValue = document.createElement('span');
+        progressValue.className = 'zh-feed-scroll-progress-value';
+        progressValue.textContent = '0%';
+        progress.appendChild(progressBar);
+        progress.appendChild(progressValue);
+        document.body.appendChild(progress);
+
+        const controller = {
+            destroyed: false,
+            armed: false,
+            atEnd: false,
+            loading: false,
+            distance: 0,
+            displayedRatio: 0,
+            threshold: Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0),
+            lastScrollY: Math.max(0, window.scrollY || 0),
+            lastTouchY: null,
+            lastFrameTime: null,
+            armTimer: null,
+            readyTimer: null,
+            frameId: null,
+            progress,
+            requestRefresh: null,
+            retry: null,
+            destroy: null
+        };
+
+        const isAtDocumentEnd = () => {
+            const root = document.documentElement;
+            const body = document.body;
+            const viewportHeight = window.innerHeight || root.clientHeight || 0;
+            const documentHeight = Math.max(root.scrollHeight, body?.scrollHeight || 0);
+            return (window.scrollY || 0) + viewportHeight >= documentHeight - 8;
+        };
+
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+        const cancelReadyRefresh = () => {
+            if (controller.readyTimer === null) return;
+            clearTimeout(controller.readyTimer);
+            controller.readyTimer = null;
+        };
+
+        const renderProgress = timestamp => {
+            controller.frameId = null;
+            if (controller.destroyed) return;
+            const targetRatio = Math.max(0, Math.min(1, controller.distance / controller.threshold));
+            const elapsed = controller.lastFrameTime === null ? 16 : Math.min(64, Math.max(0, timestamp - controller.lastFrameTime));
+            controller.lastFrameTime = timestamp;
+            if (prefersReducedMotion) {
+                controller.displayedRatio = targetRatio;
+            } else {
+                const follow = 1 - Math.exp(-elapsed / 85);
+                controller.displayedRatio += (targetRatio - controller.displayedRatio) * follow;
+                if (Math.abs(targetRatio - controller.displayedRatio) < 0.001) controller.displayedRatio = targetRatio;
+            }
+
+            const percent = Math.round(controller.displayedRatio * 100);
+            const isReady = targetRatio >= 1 && controller.displayedRatio >= 0.995;
+            progressBar.style.setProperty('--zh-feed-progress-angle', `${controller.displayedRatio * 360}deg`);
+            progressValue.textContent = controller.loading ? '...' : controller.atEnd ? `${percent}%` : '↓';
+            progress.setAttribute('aria-valuenow', String(percent));
+            progress.setAttribute('aria-valuetext', controller.atEnd ? `下一批加载进度 ${percent}%` : '滚动到列表底部后开始累计');
+            progress.classList.toggle('is-at-end', controller.atEnd);
+            progress.classList.toggle('is-ready', isReady);
+
+            if (isReady && !controller.loading && controller.readyTimer === null) {
+                controller.readyTimer = setTimeout(() => {
+                    controller.readyTimer = null;
+                    if (controller.atEnd && controller.distance >= controller.threshold) requestRefresh(false);
+                }, prefersReducedMotion ? 0 : 140);
+            } else if (!isReady) {
+                cancelReadyRefresh();
+            }
+
+            if (Math.abs(targetRatio - controller.displayedRatio) >= 0.001) scheduleProgressRender();
+        };
+
+        const scheduleProgressRender = () => {
+            if (controller.frameId === null) controller.frameId = requestAnimationFrame(renderProgress);
+        };
+
+        const scheduleArm = (delay = 120) => {
+            clearTimeout(controller.armTimer);
+            controller.armed = false;
+            controller.armTimer = setTimeout(() => {
+                if (controller.destroyed) return;
+                controller.lastScrollY = Math.max(0, window.scrollY || 0);
+                controller.armed = true;
+            }, delay);
+        };
+
+        const requestRefresh = async force => {
+            if (controller.destroyed || controller.loading || !sentinel.isConnected) return;
+            if (!force && (!controller.armed || controller.distance < controller.threshold)) return;
+            cancelReadyRefresh();
+            controller.loading = true;
+            controller.armed = false;
+            progress.classList.add('is-loading');
+            progressValue.textContent = '...';
+            try {
+                await onRefresh(controller);
+            } finally {
+                if (!controller.destroyed) {
+                    controller.loading = false;
+                    controller.distance = 0;
+                    progress.classList.remove('is-loading', 'is-ready');
+                    scheduleProgressRender();
+                    scheduleArm();
+                }
+            }
+        };
+
+        const recordDistance = delta => {
+            if (!controller.armed || !controller.atEnd || controller.loading || !Number.isFinite(delta) || delta <= 0) return;
+            controller.distance = Math.min(controller.threshold, controller.distance + delta);
+            scheduleProgressRender();
+        };
+
+        const resetProgress = () => {
+            if (controller.distance === 0) return;
+            controller.distance = 0;
+            scheduleProgressRender();
+        };
+
+        const updateEndState = () => {
+            const nextAtEnd = isAtDocumentEnd();
+            if (!nextAtEnd) resetProgress();
+            if (controller.atEnd !== nextAtEnd) {
+                controller.atEnd = nextAtEnd;
+                scheduleProgressRender();
+            }
+        };
+
+        const onScroll = () => {
+            const scrollY = Math.max(0, window.scrollY || 0);
+            controller.lastScrollY = scrollY;
+            if (!controller.armed) { scheduleArm(); return; }
+            updateEndState();
+        };
+
+        const onWheel = event => {
+            if (!controller.armed || controller.loading) return;
+            updateEndState();
+            if (!controller.atEnd) return;
+            if (event.deltaY < 0) { resetProgress(); return; }
+            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (window.innerHeight || 1) : 1;
+            recordDistance(event.deltaY * unit);
+        };
+
+        const onTouchStart = event => {
+            controller.lastTouchY = event.touches[0]?.clientY ?? null;
+            updateEndState();
+        };
+
+        const onTouchMove = event => {
+            const touchY = event.touches[0]?.clientY;
+            if (!Number.isFinite(touchY) || !Number.isFinite(controller.lastTouchY)) return;
+            const delta = controller.lastTouchY - touchY;
+            controller.lastTouchY = touchY;
+            updateEndState();
+            if (!controller.atEnd) return;
+            if (delta < 0) { resetProgress(); return; }
+            recordDistance(delta);
+        };
+
+        const onResize = () => {
+            const previousThreshold = controller.threshold;
+            controller.threshold = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0);
+            controller.distance = Math.min(controller.threshold, controller.distance * controller.threshold / previousThreshold);
+            updateEndState();
+            scheduleProgressRender();
+        };
+
+        controller.requestRefresh = requestRefresh;
+        controller.retry = () => requestRefresh(true);
+        controller.destroy = () => {
+            if (controller.destroyed) return;
+            controller.destroyed = true;
+            clearTimeout(controller.armTimer);
+            cancelReadyRefresh();
+            if (controller.frameId !== null) cancelAnimationFrame(controller.frameId);
+            window.removeEventListener('scroll', onScroll);
+            window.removeEventListener('wheel', onWheel);
+            window.removeEventListener('touchstart', onTouchStart);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('resize', onResize);
+            progress.remove();
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('wheel', onWheel, { passive: true });
+        window.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('resize', onResize, { passive: true });
+        _feedScrollController = controller;
+        updateEndState();
+        scheduleArm();
+        return controller;
+    }
+
+    function getFeedAnchorScrollTop(element) {
+        if (!element) return 0;
+        if (typeof element.getBoundingClientRect === 'function') {
+            return Math.max(0, Math.round(element.getBoundingClientRect().top + window.scrollY - 12));
+        }
+        return Math.max(0, Number(element.offsetTop) || 0);
+    }
+
     function getHomeCacheKey() {
         return `${location.origin}${location.pathname}::topstory`;
     }
@@ -5886,6 +6730,51 @@ ${page.xhtml}
         return (richText?.innerText || item.innerText || '').replace(/\s+/g, ' ').trim();
     }
 
+    function parseHomeCountValue(raw) {
+        if (raw == null || raw === '') return null;
+        const text = String(raw).replace(/,/g, '').replace(/\s+/g, '').trim();
+        const match = text.match(/^([\d.]+)(万|亿)?$/);
+        if (!match) return null;
+        const value = Number(match[1]);
+        if (!Number.isFinite(value)) return null;
+        const multiplier = match[2] === '亿' ? 100000000 : match[2] === '万' ? 10000 : 1;
+        return Math.round(value * multiplier);
+    }
+
+    function getHomeDomCount(item, itemprop, kind) {
+        const metaValue = item.querySelector(`meta[itemprop="${itemprop}"]`)?.getAttribute('content');
+        const fromMeta = parseHomeCountValue(metaValue);
+        if (fromMeta != null) return fromMeta;
+        if (kind === 'follower') return null;
+        const actionText = (item.querySelector('.ContentItem-actions')?.textContent || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
+        if (kind === 'voteup') {
+            const match = actionText.match(/赞同\s*([\d.]+\s*(?:万|亿)?)/);
+            return parseHomeCountValue(match?.[1]);
+        }
+        const match = actionText.match(/([\d.]+\s*(?:万|亿)?)\s*条评论/);
+        if (match) return parseHomeCountValue(match[1]);
+        return /添加评论/.test(actionText) ? 0 : null;
+    }
+
+    function formatHomeCardCount(value) {
+        const count = Number(value);
+        return Number.isFinite(count) ? Math.max(0, Math.round(count)).toLocaleString('zh-CN') : '';
+    }
+
+    function getHomeCardStats(itemRecord = {}) {
+        const stats = [];
+        if (itemRecord.voteup_count != null && Number.isFinite(Number(itemRecord.voteup_count))) {
+            stats.push(`${formatHomeCardCount(itemRecord.voteup_count)} 赞同`);
+        }
+        if (itemRecord.comment_count != null && Number.isFinite(Number(itemRecord.comment_count))) {
+            stats.push(Number(itemRecord.comment_count) > 0 ? `${formatHomeCardCount(itemRecord.comment_count)} 评论` : '暂无评论');
+        }
+        if (itemRecord.author_follower_count != null && Number.isFinite(Number(itemRecord.author_follower_count)) && Number(itemRecord.author_follower_count) > 0) {
+            stats.push(`${formatHomeCardCount(itemRecord.author_follower_count)} 粉丝`);
+        }
+        return stats;
+    }
+
     function getWebUrlFromApiTarget(target = {}) {
         const type = target.type || '';
         if (type === 'answer' && target.question?.id && target.id) {
@@ -5919,6 +6808,11 @@ ${page.xhtml}
     function getHomeApiAuthorHeadline(target = {}, brief = {}) {
         const author = target.author || brief.member || {};
         return (author.headline || author.description || author.bio || brief.headline || brief.description || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeApiAuthorFollowerCount(target = {}, brief = {}) {
+        const author = target.author || brief.member || {};
+        return parseHomeCountValue(author.follower_count ?? author.followerCount ?? brief.follower_count);
     }
 
     function getHomeApiThumbnail(target = {}, brief = {}) {
@@ -5989,6 +6883,7 @@ ${page.xhtml}
         const author = getHomeApiTargetAuthor(target, brief);
         const authorAvatar = getHomeApiAuthorAvatar(target, brief);
         const authorHeadline = getHomeApiAuthorHeadline(target, brief);
+        const authorFollowerCount = getHomeApiAuthorFollowerCount(target, brief);
         const thumbnail = getHomeApiThumbnail(target, brief);
         const stats = formatHomeApiStats(target);
         const primaryContent = target.content || target.detail || '';
@@ -6003,6 +6898,7 @@ ${page.xhtml}
             author,
             authorAvatar,
             authorHeadline,
+            author_follower_count: authorFollowerCount,
             thumbnail,
             stats,
             snippet: text.slice(0, 180),
@@ -6053,6 +6949,9 @@ ${page.xhtml}
             type: getHomeItemType(url),
             title: getHomeItemTitle(item),
             author: getHomeItemAuthor(item),
+            author_follower_count: getHomeDomCount(item, 'zhihu:followerCount', 'follower'),
+            voteup_count: getHomeDomCount(item, 'upvoteCount', 'voteup'),
+            comment_count: getHomeDomCount(item, 'commentCount', 'comment'),
             snippet: text.slice(0, 180),
             text,
             sourceTop: getElementPageTop(item),
@@ -6066,7 +6965,7 @@ ${page.xhtml}
             updateWikiProgress(message, 'collect');
         } else {
             if (statusEl) statusEl.textContent = message;
-            showCollectOverlay(message);
+            if (!statusEl?.classList?.contains('zh-home-scroll-status')) showCollectOverlay(message);
         }
     }
 
@@ -6180,12 +7079,13 @@ ${page.xhtml}
     function persistHomeFeedCache() {
         syncHomeItemsFromGroups();
         _homeFeedCache.set(getHomeCacheKey(), {
-            schemaVersion: 2,
+            schemaVersion: 3,
             groups: _homeState.groups,
             items: _homeState.items,
             currentIndex: _homeState.currentIndex || 0,
             currentGroupIndex: _homeState.currentGroupIndex || 0,
             currentIndexInGroup: _homeState.currentIndexInGroup || 0,
+            listScrollY: _homeState.listScrollY || 0,
             exitScrollY: _homeState.exitScrollY || _homeState.originalScrollY,
             exhausted: _homeState.exhausted,
             apiNextUrl: _homeState.apiNextUrl,
@@ -6272,6 +7172,19 @@ ${page.xhtml}
         crossOriginSet('zh-home-layout', layout);
     }
 
+    function getHomeListEntries() {
+        syncHomeItemsFromGroups();
+        if (getHomeFeedMode() === 'scroll') {
+            return _homeState.groups.flatMap((group, groupIndex) => group.map((itemRecord, indexInGroup) => ({
+                itemRecord,
+                groupIndex,
+                indexInGroup
+            })));
+        }
+        const groupIndex = _homeState.currentGroupIndex || 0;
+        return getCurrentHomeGroup().map((itemRecord, indexInGroup) => ({ itemRecord, groupIndex, indexInGroup }));
+    }
+
     function renderHomeGroupToolbar(wrapper) {
         const groups = normalizeHomeGroups(_homeState.groups);
         const groupIndex = Math.max(0, Math.min(_homeState.currentGroupIndex || 0, Math.max(0, groups.length - 1)));
@@ -6287,17 +7200,20 @@ ${page.xhtml}
             return btn;
         };
 
-        toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setHomeGroup(groupIndex - 1)));
-
         const indicator = document.createElement('span');
         indicator.className = 'zh-home-nav-indicator';
-        indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
-        toolbar.appendChild(indicator);
-
-        toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setHomeGroup(groupIndex + 1)));
-
-        if (!_homeState.exhausted) {
-            toolbar.appendChild(makeBtn('加载更多', '+', _homeState.loadingMore, () => loadMoreHomeAndRender()));
+        if (getHomeFeedMode() === 'scroll') {
+            indicator.classList.add('zh-home-scroll-count');
+            indicator.textContent = `已加载 ${syncHomeItemsFromGroups().length} 条`;
+            toolbar.appendChild(indicator);
+        } else {
+            toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setHomeGroup(groupIndex - 1)));
+            indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
+            toolbar.appendChild(indicator);
+            toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setHomeGroup(groupIndex + 1)));
+            if (!_homeState.exhausted) {
+                toolbar.appendChild(makeBtn('加载更多', '+', _homeState.loadingMore, () => loadMoreHomeAndRender()));
+            }
         }
 
         const layoutBtn = document.createElement('button');
@@ -6309,16 +7225,66 @@ ${page.xhtml}
             : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>';
         layoutBtn.addEventListener('click', () => {
             setHomeLayout(isSingle ? 'double' : 'single');
-            renderHomeList();
+            renderHomeList({ preserveScroll: getHomeFeedMode() === 'scroll' });
         });
         toolbar.appendChild(layoutBtn);
 
         wrapper.appendChild(toolbar);
     }
 
-    function renderHomeList() {
+    async function refreshHomeAfterScroll(sentinel, controller) {
+        if (_homeState.loadingMore || _homeState.exhausted || !sentinel.isConnected) return;
+        sentinel.classList.add('is-loading');
+        sentinel.textContent = '正在加载更多推荐...';
+        try {
+            const batch = await loadNextHomeGroup(sentinel, {
+                switchToNewGroup: false,
+                label: '连续加载首页推荐'
+            });
+            if (batch.length) {
+                renderHomeList({ focusLatestBatch: true });
+            } else {
+                disconnectFeedScrollController();
+                sentinel.classList.remove('is-loading');
+                sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+            }
+        } catch (error) {
+            sentinel.classList.remove('is-loading');
+            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
+            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
+        }
+    }
+
+    function prepareHomeScrollRefresh(wrapper) {
+        disconnectFeedScrollController();
+        if (getHomeFeedMode() !== 'scroll') return;
+
+        const sentinel = wrapper.querySelector('#zh-home-scroll-sentinel') || document.createElement('div');
+        sentinel.id = 'zh-home-scroll-sentinel';
+        sentinel.className = 'zh-home-scroll-status';
+        if (_homeState.exhausted) {
+            sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+            if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+            return;
+        }
+        sentinel.textContent = '';
+        sentinel.setAttribute('aria-label', '继续加载首页推荐');
+        if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+
+        return () => {
+            if (_homeState.collecting || !sentinel.isConnected) return null;
+            return setupFeedScrollController({
+                sentinel,
+                onRefresh: controller => refreshHomeAfterScroll(sentinel, controller)
+            });
+        };
+    }
+
+    function renderHomeList(options = {}) {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        const previousScrollY = window.scrollY;
+        disconnectFeedScrollController();
         _homeState.view = 'list';
         restoreLiveMount();
         clearHomeTranslations();
@@ -6329,10 +7295,9 @@ ${page.xhtml}
         appendFeedSwitchHeader(wrapper, 'home');
         renderHomeGroupToolbar(wrapper);
 
-        const group = getCurrentHomeGroup();
-        const groupIndex = _homeState.currentGroupIndex || 0;
+        const entries = getHomeListEntries();
 
-        if (!group.length) {
+        if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'zh-collect-status';
             empty.textContent = '没有采集到可展示的首页推荐。';
@@ -6341,8 +7306,14 @@ ${page.xhtml}
         }
 
         const grid = document.createElement('div');
-        grid.className = 'zh-home-grid' + (getHomeLayout() === 'single' ? ' zh-home-grid-single' : '');
-        group.forEach((itemRecord, index) => {
+        grid.className = 'zh-home-grid' + (getHomeLayout() === 'single' ? ' zh-home-grid-single' : '') + (getHomeFeedMode() === 'scroll' ? ' zh-home-grid-scroll' : '');
+        entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
+            if (getHomeFeedMode() === 'scroll' && indexInGroup === 0 && groupIndex > 0) {
+                const divider = document.createElement('div');
+                divider.className = 'zh-feed-batch-divider';
+                divider.innerHTML = `<span>第 ${groupIndex + 1} 批 · 6 条推荐</span>`;
+                grid.appendChild(divider);
+            }
             const card = document.createElement('div');
             card.className = 'zh-home-card';
 
@@ -6359,7 +7330,7 @@ ${page.xhtml}
                 meta.appendChild(avatar);
             }
             const metaText = document.createElement('span');
-            metaText.textContent = [itemRecord.author, itemRecord.stats].filter(Boolean).join(' · ');
+            metaText.textContent = itemRecord.author || '未知作者';
             meta.appendChild(metaText);
             if (itemRecord.type) {
                 const typeTag = document.createElement('span');
@@ -6375,13 +7346,42 @@ ${page.xhtml}
             card.appendChild(title);
             card.appendChild(meta);
             if (itemRecord.snippet) card.appendChild(snippet);
-            card.addEventListener('click', () => renderHomeItem(index, groupIndex));
+            const stats = getHomeCardStats(itemRecord);
+            if (stats.length) {
+                const statsFooter = document.createElement('div');
+                statsFooter.className = 'zh-home-card-stats';
+                stats.forEach(value => {
+                    const stat = document.createElement('span');
+                    stat.textContent = value;
+                    statsFooter.appendChild(stat);
+                });
+                card.appendChild(statsFooter);
+            }
+            card.addEventListener('click', () => {
+                _homeState.listScrollY = window.scrollY;
+                renderHomeItem(indexInGroup, groupIndex);
+            });
             grid.appendChild(card);
         });
         wrapper.appendChild(grid);
+        const activateScrollRefresh = prepareHomeScrollRefresh(wrapper);
 
         setupImageToggles();
-        window.scrollTo(0, 0);
+        const latestDivider = Array.from(wrapper.querySelectorAll('.zh-feed-batch-divider')).pop();
+        const targetScrollY = options.focusLatestBatch
+            ? getFeedAnchorScrollTop(latestDivider)
+            : options.scrollY ?? (options.restoreScroll ? _homeState.listScrollY : options.preserveScroll ? previousScrollY : null);
+        const positionList = () => {
+            window.scrollTo(0, options.focusLatestBatch || options.preserveScroll || options.restoreScroll
+                ? Math.max(0, Number(targetScrollY) || 0)
+                : 0);
+            if (options.startScrollRefresh !== false) {
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
+        };
+        if (options.focusLatestBatch || options.preserveScroll || options.restoreScroll) requestAnimationFrame(positionList);
+        else positionList();
+        return () => requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
     }
 
     function setCurrentHomeItem(indexInGroup = 0, groupIndex = _homeState.currentGroupIndex) {
@@ -6533,6 +7533,7 @@ ${page.xhtml}
         const position = setCurrentHomeItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+        disconnectFeedScrollController();
         
         logFeedItemReadingRecord(itemRecord);
 
@@ -6569,7 +7570,7 @@ ${page.xhtml}
         const backBtn = document.createElement('button');
         backBtn.className = 'zh-inline-btn';
         backBtn.textContent = '返回列表';
-        backBtn.addEventListener('click', renderHomeList);
+        backBtn.addEventListener('click', () => renderHomeList({ restoreScroll: true }));
         toolbar.appendChild(backBtn);
 
         const current = document.createElement('span');
@@ -6643,12 +7644,13 @@ ${page.xhtml}
 
             const cacheKey = getHomeCacheKey();
             const cached = _homeFeedCache.get(cacheKey);
-            if (cached?.schemaVersion === 2 && Array.isArray(cached.groups) && cached.groups.length) {
+            if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
                 _homeState.groups = normalizeHomeGroups(cached.groups);
                 syncHomeItemsFromGroups();
                 _homeState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _homeState.groups.length - 1));
                 _homeState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_homeState.groups[_homeState.currentGroupIndex]?.length || 1) - 1));
                 _homeState.currentIndex = getHomeGroupStartIndex(_homeState.currentGroupIndex) + _homeState.currentIndexInGroup;
+                _homeState.listScrollY = cached.listScrollY || 0;
                 _homeState.exitScrollY = cached.exitScrollY || _homeState.items[_homeState.currentIndex]?.sourceTop || _homeState.originalScrollY;
                 _homeState.exhausted = !!cached.exhausted;
                 _homeState.apiNextUrl = cached.apiNextUrl || '';
@@ -6682,7 +7684,9 @@ ${page.xhtml}
             _articleNode = wrapper;
             createQuestionToolsPanel();
             window._isImmersive = true;
-            renderHomeList();
+            const startScrollRefresh = renderHomeList({ startScrollRefresh: false });
+            _homeState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;
@@ -6900,10 +7904,11 @@ ${page.xhtml}
     function persistFollowFeedCache() {
         syncFollowItemsFromGroups();
         _followFeedCache.set(getFollowCacheKey(), {
-            schemaVersion: 2,
+            schemaVersion: 3,
             groups: _followState.groups,
             currentGroupIndex: _followState.currentGroupIndex || 0,
             currentIndexInGroup: _followState.currentIndexInGroup || 0,
+            listScrollY: _followState.listScrollY || 0,
             exhausted: _followState.exhausted,
             apiNextUrl: _followState.apiNextUrl,
             apiStarted: _followState.apiStarted
@@ -6935,8 +7940,10 @@ ${page.xhtml}
             });
             if (!batch.length) { _followState.exhausted = true; persistFollowFeedCache(); return []; }
             _followState.groups = normalizeFollowGroups(_followState.groups.concat([batch]));
-            _followState.currentGroupIndex = _followState.groups.length - 1;
-            _followState.currentIndexInGroup = 0;
+            if (options.switchToNewGroup !== false) {
+                _followState.currentGroupIndex = _followState.groups.length - 1;
+                _followState.currentIndexInGroup = 0;
+            }
             _followState.currentIndex = getFollowGroupStartIndex(_followState.currentGroupIndex);
             persistFollowFeedCache();
             return batch;
@@ -6956,10 +7963,10 @@ ${page.xhtml}
             wrapper.appendChild(status);
         }
         if (status) status.textContent = `正在加载第 ${_followState.groups.length + 1} 组关注动态...`;
+        const keepScrollY = window.scrollY;
         try {
             const batch = await loadNextFollowGroup(status);
-            renderFollowList();
-            requestAnimationFrame(() => window.scrollTo(0, 0));
+            renderFollowList({ focusLatestBatch: batch.length > 0, previousScrollY: keepScrollY });
             return batch;
         } catch (e) {
             console.error('加载关注动态失败:', e);
@@ -7012,6 +8019,47 @@ ${page.xhtml}
         crossOriginSet('zh-follow-layout', layout);
     }
 
+    async function refreshFollowAfterScroll(sentinel, controller) {
+        if (_followState.loadingMore || _followState.exhausted || !sentinel.isConnected) return;
+        sentinel.classList.add('is-loading');
+        sentinel.textContent = '正在加载更多动态...';
+        try {
+            const batch = await loadNextFollowGroup(sentinel, { switchToNewGroup: false, label: '连续加载关注动态' });
+            if (batch.length) renderFollowList({ focusLatestBatch: true });
+            else {
+                disconnectFeedScrollController();
+                sentinel.classList.remove('is-loading');
+                sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+            }
+        } catch (error) {
+            sentinel.classList.remove('is-loading');
+            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
+            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
+        }
+    }
+
+    function prepareFollowScrollRefresh(wrapper) {
+        disconnectFeedScrollController();
+        if (config.homeFeedMode !== 'scroll') return;
+        const sentinel = wrapper.querySelector('#zh-follow-scroll-sentinel') || document.createElement('div');
+        sentinel.id = 'zh-follow-scroll-sentinel';
+        sentinel.className = 'zh-home-scroll-status';
+        if (_followState.exhausted) {
+            sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+            if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+            return;
+        }
+        sentinel.textContent = '';
+        if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+        return () => {
+            if (_followState.collecting || !sentinel.isConnected) return null;
+            return setupFeedScrollController({
+                sentinel,
+                onRefresh: controller => refreshFollowAfterScroll(sentinel, controller)
+            });
+        };
+    }
+
     function renderFollowGroupToolbar(wrapper) {
         const groups = normalizeFollowGroups(_followState.groups);
         const groupIndex = Math.max(0, Math.min(_followState.currentGroupIndex || 0, Math.max(0, groups.length - 1)));
@@ -7027,15 +8075,20 @@ ${page.xhtml}
             return btn;
         };
 
-        // 切回首页推荐：直接跳转 URL，脚本自动重新加载
-        toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setFollowGroup(groupIndex - 1)));
         const indicator = document.createElement('span');
         indicator.className = 'zh-home-nav-indicator';
-        indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
-        toolbar.appendChild(indicator);
-        toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setFollowGroup(groupIndex + 1)));
-        if (!_followState.exhausted) {
-            toolbar.appendChild(makeBtn('加载更多', '+', _followState.loadingMore, () => loadMoreFollowAndRender()));
+        if (config.homeFeedMode === 'scroll') {
+            indicator.classList.add('zh-home-scroll-count');
+            indicator.textContent = `已加载 ${syncFollowItemsFromGroups().length} 条`;
+            toolbar.appendChild(indicator);
+        } else {
+            toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setFollowGroup(groupIndex - 1)));
+            indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
+            toolbar.appendChild(indicator);
+            toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setFollowGroup(groupIndex + 1)));
+            if (!_followState.exhausted) {
+                toolbar.appendChild(makeBtn('加载更多', '+', _followState.loadingMore, () => loadMoreFollowAndRender()));
+            }
         }
 
         const layoutBtn = document.createElement('button');
@@ -7074,9 +8127,11 @@ ${page.xhtml}
         return line;
     }
 
-    function renderFollowList() {
+    function renderFollowList(options = {}) {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        const previousScrollY = window.scrollY;
+        disconnectFeedScrollController();
         _followState.view = 'list';
         restoreLiveMount();
         clearQuestionTranslations();
@@ -7089,9 +8144,15 @@ ${page.xhtml}
         appendFeedSwitchHeader(wrapper, 'follow');
         renderFollowGroupToolbar(wrapper);
 
-        const group = getCurrentFollowGroup();
-        const groupIndex = _followState.currentGroupIndex || 0;
-        if (!group.length) {
+        const scrollMode = config.homeFeedMode === 'scroll';
+        const groups = scrollMode ? normalizeFollowGroups(_followState.groups) : [getCurrentFollowGroup()];
+        const groupOffset = scrollMode ? 0 : (_followState.currentGroupIndex || 0);
+        const entries = groups.flatMap((group, batchIndex) => group.map((itemRecord, indexInGroup) => ({
+            itemRecord,
+            groupIndex: groupOffset + batchIndex,
+            indexInGroup
+        })));
+        if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'zh-collect-status';
             empty.textContent = '没有采集到可展示的关注动态。';
@@ -7101,7 +8162,17 @@ ${page.xhtml}
 
         const timeline = document.createElement('div');
         timeline.className = 'zh-follow-timeline' + (isDouble ? ' zh-follow-grid' : '');
-        group.forEach((itemRecord, index) => {
+        entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
+            if (scrollMode && indexInGroup === 0 && groupIndex > 0) {
+                const divider = document.createElement('div');
+                divider.className = 'zh-feed-batch-divider';
+                const createdTimestamp = Number(itemRecord.createdTime);
+                const batchDate = Number.isFinite(createdTimestamp) && createdTimestamp > 0
+                    ? new Date(createdTimestamp > 1e12 ? createdTimestamp : createdTimestamp * 1000).toLocaleDateString()
+                    : '继续浏览';
+                divider.innerHTML = `<span>第 ${groupIndex + 1} 批 · ${batchDate}</span>`;
+                timeline.appendChild(divider);
+            }
             const moment = document.createElement('div');
             moment.className = 'zh-moment';
             moment.appendChild(buildMomentActionLine(itemRecord));
@@ -7119,12 +8190,28 @@ ${page.xhtml}
                 card.appendChild(snippet);
             }
             moment.appendChild(card);
-            moment.addEventListener('click', () => renderFollowItem(index, groupIndex));
+            moment.addEventListener('click', () => {
+                _followState.listScrollY = window.scrollY;
+                renderFollowItem(indexInGroup, groupIndex);
+            });
             timeline.appendChild(moment);
         });
         wrapper.appendChild(timeline);
+        const activateScrollRefresh = prepareFollowScrollRefresh(wrapper);
         setupImageToggles();
-        window.scrollTo(0, 0);
+        const latestDivider = Array.from(timeline.querySelectorAll('.zh-feed-batch-divider')).pop();
+        const targetScrollY = options.focusLatestBatch
+            ? getFeedAnchorScrollTop(latestDivider)
+            : (options.restoreScroll ? _followState.listScrollY : options.preserveScroll ? previousScrollY : null);
+        const positionList = () => {
+            window.scrollTo(0, options.focusLatestBatch || options.restoreScroll || options.preserveScroll ? targetScrollY || 0 : 0);
+            if (options.startScrollRefresh !== false) {
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
+        };
+        if (options.focusLatestBatch || options.restoreScroll || options.preserveScroll) requestAnimationFrame(positionList);
+        else positionList();
+        return () => requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
     }
 
     function setCurrentFollowItem(indexInGroup = 0, groupIndex = _followState.currentGroupIndex) {
@@ -7189,6 +8276,7 @@ ${page.xhtml}
         const position = setCurrentFollowItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+        disconnectFeedScrollController();
 
         logFollowItemReadingRecord(itemRecord);
 
@@ -7254,12 +8342,13 @@ ${page.xhtml}
     // 载入 follow 数据到 _followState（缓存优先），返回是否有内容
     async function ensureFollowDataLoaded(status) {
         const cached = _followFeedCache.get(getFollowCacheKey());
-        if (cached?.schemaVersion === 2 && Array.isArray(cached.groups) && cached.groups.length) {
+        if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
             _followState.groups = normalizeFollowGroups(cached.groups);
             syncFollowItemsFromGroups();
             _followState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _followState.groups.length - 1));
             _followState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_followState.groups[_followState.currentGroupIndex]?.length || 1) - 1));
             _followState.currentIndex = getFollowGroupStartIndex(_followState.currentGroupIndex) + _followState.currentIndexInGroup;
+            _followState.listScrollY = cached.listScrollY || 0;
             _followState.exhausted = !!cached.exhausted;
             _followState.apiNextUrl = cached.apiNextUrl || '';
             _followState.apiStarted = !!cached.apiStarted;
@@ -7283,6 +8372,7 @@ ${page.xhtml}
     async function switchHomeToFollowInPlace() {
         if (_followState.collecting) return;
         if (!document.getElementById('immersive-wrapper')) { location.href = location.origin + '/follow'; return; }
+        if (_homeState.view === 'list') _homeState.listScrollY = window.scrollY;
         // 已有数据：直接就地渲染，不弹遮罩、不停顿，保证来回切换丝滑
         if (_followState.groups?.length) { renderFollowList(); return; }
         _followState.collecting = true;
@@ -7291,7 +8381,9 @@ ${page.xhtml}
             const ok = await ensureFollowDataLoaded(status);
             removeCollectOverlay();
             if (!ok) { alert('未能通过 API 加载到关注动态（请确认已登录知乎）。'); return; }
-            renderFollowList();
+            const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
+            _followState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             alert(`切换关注动态失败：${err.message}`);
@@ -7304,7 +8396,7 @@ ${page.xhtml}
     // 否则（真的在 /follow 路由）跳转首页让脚本重新加载。
     function switchFollowToHomeInPlace() {
         if (isHomePage() && document.getElementById('immersive-wrapper') && _homeState.items?.length) {
-            renderHomeList();
+            renderHomeList({ restoreScroll: true });
             return;
         }
         location.href = location.origin + '/';
@@ -7335,7 +8427,9 @@ ${page.xhtml}
             _articleNode = wrapper;
             createQuestionToolsPanel();
             window._isImmersive = true;
-            renderFollowList();
+            const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
+            _followState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;
@@ -10107,7 +11201,7 @@ ${page.xhtml}
                     if (prevView === 'item') {
                         renderHomeItem(_homeState.currentIndexInGroup, _homeState.currentGroupIndex);
                     } else {
-                        renderHomeList();
+                        renderHomeList({ restoreScroll: true });
                     }
                 } else if (prevPage === 'question') {
                     if (prevView === 'list') {
@@ -10124,6 +11218,14 @@ ${page.xhtml}
 
             const scrollY = _personalSpaceBackup.scrollTop || window._zhPrevScrollY || 0;
             window.scrollTo(0, scrollY);
+            if (siblingCount > 0 && prevView === 'list') {
+                const activateScrollRefresh = prevPage === 'home'
+                    ? prepareHomeScrollRefresh(wrapper)
+                    : prevPage === 'follow'
+                        ? prepareFollowScrollRefresh(wrapper)
+                        : null;
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
 
             // 重置备份状态
             _personalSpaceBackup = {
@@ -10166,6 +11268,7 @@ ${page.xhtml}
     async function renderPersonalSpaceDashboard(activeTab = 'dashboard') {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        disconnectFeedScrollController();
 
         // 记录进入空间前的原始视图和滚动位置，防止销毁 DOM 导致退出后黑屏/白屏
         if (_homeState.view !== 'personal-space' && _questionState.view !== 'personal-space') {
@@ -10177,6 +11280,7 @@ ${page.xhtml}
             _personalSpaceBackup.questionView = _questionState.view || '';
             _personalSpaceBackup.followView = _followState.view || '';
             _personalSpaceBackup.scrollTop = window.scrollY;
+            if (_homeState.view === 'list') _homeState.listScrollY = window.scrollY;
             _personalSpaceBackup.hasTopNav = wrapper.classList.contains('zh-has-top-nav');
             _personalSpaceBackup.hasHomeWide = wrapper.classList.contains('zh-home-wide');
 
@@ -11310,7 +12414,7 @@ ${page.xhtml}
         const exitBtn = document.createElement('button');
         exitBtn.id = 'immersive-exit-btn';
         exitBtn.innerText = '退出沉浸';
-        exitBtn.addEventListener('click', toggleImmersiveMode);
+        exitBtn.addEventListener('click', window.toggleImmersiveMode);
         document.body.appendChild(exitBtn);
     }
 
@@ -11431,6 +12535,7 @@ function enterImmersive() {
         stopArticleAdCleanup();
         removeCollectOverlay();
         restoreLiveMount();
+        disconnectFeedScrollController();
 
         // 0. 如果在个人空间内直接退出沉浸模式，先清理个人空间对 wrapper 子元素的隐藏
         const wrapper = document.getElementById('immersive-wrapper');
@@ -11523,6 +12628,7 @@ function enterImmersive() {
             currentIndex: 0,
             currentGroupIndex: 0,
             currentIndexInGroup: 0,
+            listScrollY: 0,
             view: '',
             collecting: false,
             loadingMore: false,
@@ -11545,6 +12651,7 @@ function enterImmersive() {
             hasHomeWide: false
         };
     }
+
 
 // ═══════════════════════════════════════════════════════════
 // 模块: events.js

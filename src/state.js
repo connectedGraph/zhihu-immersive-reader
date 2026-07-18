@@ -30,7 +30,7 @@
     const WIKI_HISTORY_MAX = 12;
     const HOME_BATCH_SIZE = 6;
     const HOME_RECOMMEND_API = 'https://www.zhihu.com/api/v3/feed/topstory/recommend';
-    const FOLLOW_BATCH_SIZE = 8;
+    const FOLLOW_BATCH_SIZE = 6;
     const FOLLOW_MOMENTS_API = 'https://www.zhihu.com/api/v3/moments';
     const TRANSLATION_CACHE_KEY = 'zh-immersive-translation-cache-v1';
     const TRANSLATION_CACHE_MAX = 800;
@@ -68,7 +68,10 @@
             if (!remote || !newVal) return;
             try {
                 config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(newVal));
+                applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
                 if (window._isImmersive) setupImageToggles();
+                if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+                if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
             } catch (err) {
                 console.warn('知乎沉浸式阅读：同步配置失败', err);
             }
@@ -79,7 +82,10 @@
         try {
             config = Object.assign({}, DEFAULT_CONFIG, JSON.parse(event.newValue));
             if (typeof GM_setValue === 'function') GM_setValue('zh-immersive-config', event.newValue);
+            applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：同步字体失败', err));
             if (window._isImmersive) setupImageToggles();
+            if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
+            if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
         } catch (err) {
             console.warn('知乎沉浸式阅读：同步配置失败', err);
         }
@@ -107,6 +113,7 @@
         currentIndex: 0,
         currentGroupIndex: 0,
         currentIndexInGroup: 0,
+        listScrollY: 0,
         view: '',
         collecting: false,
         loadingMore: false,
@@ -121,6 +128,7 @@
         currentIndex: 0,
         currentGroupIndex: 0,
         currentIndexInGroup: 0,
+        listScrollY: 0,
         view: '',
         collecting: false,
         loadingMore: false,

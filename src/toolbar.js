@@ -102,7 +102,7 @@
         const exitBtn = document.createElement('button');
         exitBtn.id = 'immersive-exit-btn';
         exitBtn.innerText = '退出沉浸';
-        exitBtn.addEventListener('click', toggleImmersiveMode);
+        exitBtn.addEventListener('click', window.toggleImmersiveMode);
         document.body.appendChild(exitBtn);
     }
 
@@ -223,6 +223,7 @@ function enterImmersive() {
         stopArticleAdCleanup();
         removeCollectOverlay();
         restoreLiveMount();
+        disconnectFeedScrollController();
 
         // 0. 如果在个人空间内直接退出沉浸模式，先清理个人空间对 wrapper 子元素的隐藏
         const wrapper = document.getElementById('immersive-wrapper');
@@ -315,6 +316,7 @@ function enterImmersive() {
             currentIndex: 0,
             currentGroupIndex: 0,
             currentIndexInGroup: 0,
+            listScrollY: 0,
             view: '',
             collecting: false,
             loadingMore: false,

@@ -1,121 +1,224 @@
 // ----- UI组件的HTML模板 (用于模态框等) -----
-const SETTINGS_MODAL_HTML = (cfg) => `
-    <label style="display:block; margin-bottom:5px;">API Host (记得带 /v1):</label>
-    <input type="text" id="zh-cfg-host" value="${cfg.apiHost}" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
-    
-    <label style="display:block; margin-bottom:5px;">模型名称 (Model):</label>
-    <input type="text" id="zh-cfg-model" value="${cfg.apiModel}" placeholder="gpt-3.5-turbo / deepseek-chat" style="width:100%; margin-bottom:15px; box-sizing:border-box;">
+const escapeSettingsAttr = value => String(value ?? '').replace(/[&<>"]/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
+}[ch]));
 
-    <label style="display:block; margin-bottom:5px;">API Key:</label>
-    <div class="zh-pwd-wrap">
-        <input type="password" id="zh-cfg-key" value="${cfg.apiKey}" placeholder="sk-xxxx">
-        <div id="zh-toggle-eye" class="zh-eye-icon" title="显示/隐藏">
-            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-        </div>
-    </div>
+const SETTINGS_MODAL_HTML = (cfg) => {
+    const fontPreset = FONT_PRESETS.some(item => item.id === cfg.fontPreset) ? cfg.fontPreset : 'classic-serif';
+    const customFontSource = ['none', 'url', 'file'].includes(cfg.customFontSource) ? cfg.customFontSource : 'none';
+    const homeFeedMode = cfg.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    return `
+    <div class="zh-settings-page">
+        <aside class="zh-settings-sidebar" aria-label="设置分类">
+            <div class="zh-settings-sidebar-label">设置分类</div>
+            <nav class="zh-settings-nav">
+                <button type="button" class="zh-settings-nav-btn is-active" data-section="reading"><span>个性化</span><small>阅读与首页</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="appearance"><span>字体与外观</span><small>排版与主题</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="ai"><span>AI 服务</span><small>主模型与配置组</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="knowledge"><span>知识库</span><small>向量与提示词</small></button>
+                <button type="button" class="zh-settings-nav-btn" data-section="zhihu"><span>知乎互动</span><small>默认收藏夹</small></button>
+            </nav>
+        </aside>
 
-    <button id="zh-test-api-btn" class="zh-test-btn">⚡ 测试 API 连通性</button>
-    <div id="zh-test-res" class="zh-test-res"></div>
+        <div class="zh-settings-workspace">
+            <div class="zh-settings-scroll">
+                <section class="zh-settings-section is-active" data-section="reading">
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">PERSONALIZATION</span><h2>阅读与首页</h2></div>
+                        <p>控制推荐流、翻译、图片和列表预览。</p>
+                    </header>
+                    <div class="zh-settings-subsection">
+                        <h3>首页推荐浏览</h3>
+                        <div class="zh-segmented-control" role="radiogroup" aria-label="首页推荐浏览模式">
+                            <label><input type="radio" name="zh-home-feed-mode" value="paged" ${homeFeedMode === 'paged' ? 'checked' : ''}><span>分组翻页</span></label>
+                            <label><input type="radio" name="zh-home-feed-mode" value="scroll" ${homeFeedMode === 'scroll' ? 'checked' : ''}><span>连续滚动</span></label>
+                        </div>
+                        <p class="zh-settings-note zh-settings-note-compact">连续滚动仅在到达列表底部后开始累计；继续向下滚动约一个完整视口宽度，自动加载下一批 6 条内容。分组翻页使用独立的手动加载按钮。</p>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection"><h3>阅读辅助</h3></div>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide">
+                            <span>目标翻译语言 / 提示词</span>
+                            <input type="text" id="zh-cfg-lang" value="${escapeSettingsAttr(cfg.targetLang)}" placeholder="文言文 / 英文 / 现代汉语解释">
+                        </label>
+                        <label class="zh-settings-field zh-settings-field-wide">
+                            <span>阅读笔记兴趣标签</span>
+                            <input type="text" id="zh-cfg-radar-tags" value="${escapeSettingsAttr(cfg.radarInterestTags || '')}" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
+                        </label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-toggle-list">
+                        <label class="zh-settings-toggle"><span><b>自动生成全文摘要</b><small>进入沉浸阅读后生成上下文摘要</small></span><input type="checkbox" id="zh-cfg-autosum" ${cfg.autoSum ? 'checked' : ''}><i></i></label>
+                        <label class="zh-settings-toggle"><span><b>自动生成全文翻译</b><small>下次展卷生效，会产生较多模型调用</small></span><input type="checkbox" id="zh-cfg-autotr" ${cfg.autoTr ? 'checked' : ''}><i></i></label>
+                        <label class="zh-settings-toggle"><span><b>自动折叠正文图片</b><small>进入沉浸阅读时隐藏正文图片</small></span><input type="checkbox" id="zh-cfg-auto-hide-images" ${cfg.autoHideImages ? 'checked' : ''}><i></i></label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field">
+                            <span>图片交互方式</span>
+                            <select id="zh-cfg-image-mode">
+                                <option value="preview" ${cfg.imageMode !== 'collapse' ? 'selected' : ''}>弹出预览</option>
+                                <option value="collapse" ${cfg.imageMode === 'collapse' ? 'selected' : ''}>原位展开</option>
+                            </select>
+                        </label>
+                        <label class="zh-settings-field">
+                            <span>分享导出格式</span>
+                            <select id="zh-cfg-share-format">
+                                <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图</option>
+                                <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图</option>
+                                <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG</option>
+                                <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
+                            </select>
+                        </label>
+                        <label class="zh-settings-field">
+                            <span>回答列表预览</span>
+                            <select id="zh-cfg-answer-preview">
+                                <option value="excerpt" ${cfg.answerPreviewMode !== 'ai' ? 'selected' : ''}>摘录回答前文</option>
+                                <option value="ai" ${cfg.answerPreviewMode === 'ai' ? 'selected' : ''}>AI 摘要</option>
+                            </select>
+                        </label>
+                    </div>
+                </section>
 
-    <div style="border:1px dashed var(--zh-border); border-radius:4px; padding:10px 12px; margin:0 0 15px; background:var(--zh-quote);">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:8px;">API 配置组</div>
-        <label style="display:block; margin-bottom:5px;">已保存配置:</label>
-        <select id="zh-api-profile-select" style="width:100%; margin-bottom:8px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;"></select>
-        <label style="display:block; margin-bottom:5px;">配置名称:</label>
-        <input type="text" id="zh-api-profile-name" placeholder="例如：DeepSeek / OpenAI / 本地中转" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button id="zh-api-profile-apply" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">应用配置</button>
-            <button id="zh-api-profile-save" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">保存当前为配置</button>
-            <button id="zh-api-profile-new" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">新建配置</button>
-            <button id="zh-api-profile-delete" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">删除配置</button>
-        </div>
-        <div id="zh-api-profile-status" style="font-size:12px; opacity:.75; margin-top:8px;">配置组只保存 Host / Model / Key，不影响翻译语言和其它偏好。</div>
-    </div>
-    
-    <label style="display:block; margin-bottom:5px;">目标翻译语言 / 提示词:</label>
-    <input type="text" id="zh-cfg-lang" value="${cfg.targetLang}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="文言文 / 英文 / 现代汉语解释">
-    <label style="display:block; margin-bottom:5px;">阅读笔记兴趣标签:</label>
-    <input type="text" id="zh-cfg-radar-tags" value="${cfg.radarInterestTags || ''}" style="width:100%; margin-bottom:15px; box-sizing:border-box;" placeholder="AI工具、提示词工程、LLM训练、GitHub精选">
-    
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autosum" ${cfg.autoSum ? 'checked' : ''}> 展卷时自动生成全文摘要</label>
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-autotr" ${cfg.autoTr ? 'checked' : ''}> 展卷时异步生成全文翻译 (慎选，耗量大)下次生效</label>
-    <label style="display:block; margin-bottom:5px; cursor:pointer;"><input type="checkbox" id="zh-cfg-auto-hide-images" ${cfg.autoHideImages ? 'checked' : ''}> 展卷时自动折叠正文图片</label>
-    <label style="display:block; margin-bottom:5px;">图片折叠后的交互方式:</label>
-    <select id="zh-cfg-image-mode" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="preview" ${cfg.imageMode !== 'collapse' ? 'selected' : ''}>弹出预览（点击占位符全屏查看，点击其他区域收回）</option>
-        <option value="collapse" ${cfg.imageMode === 'collapse' ? 'selected' : ''}>原位展开（点击占位符在原文位置展开图片，再点图片收起）</option>
-    </select>
-    <label style="display:block; margin-bottom:5px;">零损分享导出格式:</label>
-    <select id="zh-cfg-share-format" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="png" ${cfg.shareExportFormat === 'png' ? 'selected' : ''}>PNG 长图（本地渲染 + 公共 API 兜底）</option>
-        <option value="webp" ${cfg.shareExportFormat === 'webp' ? 'selected' : ''}>WebP 长图（本地渲染 + 公共 API 兜底）</option>
-        <option value="svg" ${!['html', 'png', 'webp'].includes(cfg.shareExportFormat) ? 'selected' : ''}>SVG（html2svg）</option>
-        <option value="html" ${cfg.shareExportFormat === 'html' ? 'selected' : ''}>HTML</option>
-    </select>
-    
-    <label style="display:block; margin-bottom:5px;">回答列表预览:</label>
-    <select id="zh-cfg-answer-preview" style="width:100%; margin-bottom:20px; box-sizing:border-box; background:var(--zh-code); border:1px solid var(--zh-border); color:var(--zh-text); padding:8px; border-radius:4px;">
-        <option value="excerpt" ${cfg.answerPreviewMode !== 'ai' ? 'selected' : ''}>摘录回答前文</option>
-        <option value="ai" ${cfg.answerPreviewMode === 'ai' ? 'selected' : ''}>AI 摘要</option>
-    </select>
+                <section class="zh-settings-section" data-section="appearance" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">APPEARANCE</span><h2>字体与外观</h2></div>
+                        <p>选择本机字体栈，或载入自己的字体文件。</p>
+                    </header>
+                    <div class="zh-settings-subsection">
+                        <h3>阅读字体</h3>
+                        <div class="zh-font-preset-grid">
+                            ${FONT_PRESETS.map(item => `
+                                <label class="zh-font-preset ${item.id === fontPreset ? 'is-selected' : ''}" style="--zh-font-option:${item.stack}">
+                                    <input type="radio" name="zh-font-preset" value="${item.id}" ${item.id === fontPreset ? 'checked' : ''}>
+                                    <span class="zh-font-preset-sample">永 Aa</span>
+                                    <span class="zh-font-preset-copy"><b>${item.name}</b><small>${item.desc}</small></span>
+                                </label>
+                            `).join('')}
+                        </div>
+                        <div id="zh-font-preview" class="zh-font-preview">
+                            <span>字体预览</span>
+                            <p>不疾而速，沉静而有力量。The quick brown fox jumps over the lazy dog.</p>
+                        </div>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>自定义字体</h3>
+                        <div class="zh-segmented-control" role="radiogroup" aria-label="自定义字体来源">
+                            <label><input type="radio" name="zh-custom-font-source" value="none" ${customFontSource === 'none' ? 'checked' : ''}><span>不使用</span></label>
+                            <label><input type="radio" name="zh-custom-font-source" value="url" ${customFontSource === 'url' ? 'checked' : ''}><span>远程直链</span></label>
+                            <label><input type="radio" name="zh-custom-font-source" value="file" ${customFontSource === 'file' ? 'checked' : ''}><span>本地文件</span></label>
+                        </div>
+                        <div class="zh-custom-font-panel" data-font-source="url" ${customFontSource === 'url' ? '' : 'hidden'}>
+                            <label class="zh-settings-field zh-settings-field-wide"><span>字体文件地址</span><input type="url" id="zh-cfg-font-url" value="${escapeSettingsAttr(cfg.customFontUrl || '')}" placeholder="https://cdn.example.com/font.woff2"></label>
+                            <div class="zh-settings-inline-actions"><button type="button" id="zh-preview-font-url" class="zh-inline-btn">加载预览</button><small>使用字体文件直链，不是字体展示页或 CSS 地址。</small></div>
+                        </div>
+                        <div class="zh-custom-font-panel" data-font-source="file" ${customFontSource === 'file' ? '' : 'hidden'}>
+                            <label class="zh-font-file-picker" for="zh-cfg-font-file">
+                                <input type="file" id="zh-cfg-font-file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf">
+                                <span><b>选择字体文件</b><small id="zh-font-file-name">${escapeSettingsAttr(cfg.customFontName || '支持 WOFF2、WOFF、TTF、OTF，建议不超过 10 MB')}</small></span>
+                            </label>
+                        </div>
+                        <div id="zh-font-load-status" class="zh-settings-status" aria-live="polite"></div>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>自定义主题</h3>
+                        <div id="zh-theme-var-grid" class="zh-theme-var-grid">
+                            ${THEME_VAR_GUIDE.map(v => `
+                                <label class="zh-theme-var-row">
+                                    <input type="color" class="zh-theme-var" data-var="${v.key}" value="${v.def}">
+                                    <span><b>${v.label}</b><small>${v.desc}</small></span>
+                                </label>
+                            `).join('')}
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <input type="text" id="zh-theme-name" placeholder="主题名称">
+                            <button id="zh-add-theme-btn" type="button" class="zh-inline-btn">添加主题</button>
+                        </div>
+                        <details class="zh-settings-details">
+                            <summary>通过 JSON 导入主题</summary>
+                            <div class="zh-settings-inline-actions"><button id="zh-theme-tutorial-btn" type="button" class="zh-inline-btn">查看模板与字段说明</button></div>
+                            <textarea id="zh-theme-json" rows="5" placeholder="粘贴包含 name 和 vars 的主题对象"></textarea>
+                            <button id="zh-import-theme-btn" type="button" class="zh-inline-btn">导入主题</button>
+                        </details>
+                        <div id="zh-custom-theme-list" class="zh-settings-list"></div>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">首页信息流 Wiki</div>
-        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">采集条数 / 并发 / RPM / 今日总览 / Obsidian 格式等参数，已移至「个人空间 → Wiki 采集」启动时设置。</div>
-        <button id="zh-preview-prompts-btn" type="button" class="zh-test-btn">查看当前系统提示词</button>
-    </div>
+                <section class="zh-settings-section" data-section="ai" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">AI SERVICE</span><h2>主模型服务</h2></div>
+                        <p>翻译、摘要和学习卡片共用这套 OpenAI 兼容配置。</p>
+                    </header>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide"><span>API Host</span><input type="url" id="zh-cfg-host" value="${escapeSettingsAttr(cfg.apiHost)}" placeholder="https://api.example.com/v1"></label>
+                        <label class="zh-settings-field"><span>模型名称</span><input type="text" id="zh-cfg-model" value="${escapeSettingsAttr(cfg.apiModel)}" placeholder="deepseek-chat"></label>
+                        <label class="zh-settings-field"><span>API Key</span><div class="zh-pwd-wrap"><input type="password" id="zh-cfg-key" value="${escapeSettingsAttr(cfg.apiKey)}" placeholder="sk-xxxx"><button id="zh-toggle-eye" type="button" class="zh-eye-icon" title="显示 API Key"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div></label>
+                    </div>
+                    <button id="zh-test-api-btn" class="zh-test-btn">测试 API 连通性</button>
+                    <div id="zh-test-res" class="zh-test-res"></div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>API 配置组</h3>
+                        <div class="zh-settings-form-grid">
+                            <label class="zh-settings-field"><span>已保存配置</span><select id="zh-api-profile-select"></select></label>
+                            <label class="zh-settings-field"><span>配置名称</span><input type="text" id="zh-api-profile-name" placeholder="DeepSeek / OpenAI / 本地中转"></label>
+                        </div>
+                        <div class="zh-settings-inline-actions">
+                            <button id="zh-api-profile-apply" type="button" class="zh-inline-btn">应用配置</button>
+                            <button id="zh-api-profile-save" type="button" class="zh-inline-btn">保存当前配置</button>
+                            <button id="zh-api-profile-new" type="button" class="zh-inline-btn">新建</button>
+                            <button id="zh-api-profile-delete" type="button" class="zh-inline-btn">删除</button>
+                        </div>
+                        <div id="zh-api-profile-status" class="zh-settings-status">配置组仅包含 Host、Model 和 Key。</div>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">Embedding 向量配置（语义搜索）</div>
-        <label style="display:block; margin-bottom:5px;">Embedding Host (带 /v1):</label>
-        <input type="text" id="zh-cfg-embedding-host" value="${cfg.embeddingHost || ''}" placeholder="https://api.openai.com/v1" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <label style="display:block; margin-bottom:5px;">Embedding 模型:</label>
-        <input type="text" id="zh-cfg-embedding-model" value="${cfg.embeddingModel || 'text-embedding-3-small'}" placeholder="text-embedding-3-small" style="width:100%; margin-bottom:4px; box-sizing:border-box;">
-        <div style="font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.5;">⚠️ 更换模型会使已有向量失效（不同模型向量不兼容）。保存时会提示你清空旧向量并重跑，或保留旧向量、放弃本次更换。</div>
-        <label style="display:block; margin-bottom:5px;">Embedding Key (留空则复用 LLM Key):</label>
-        <input type="password" id="zh-cfg-embedding-key" value="${cfg.embeddingKey || ''}" placeholder="留空则使用上方 API Key" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-    </div>
-    
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:10px;">知乎互动 · 收藏夹</div>
-        <label style="display:block; margin-bottom:5px;">默认收藏夹 ID（用于一键收藏推荐流卡片）：</label>
-        <input type="text" id="zh-cfg-collection-id" value="${cfg.defaultCollectionId || ''}" placeholder="例如 905152952" style="width:100%; margin-bottom:10px; box-sizing:border-box;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-            <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn" style="padding:6px 10px; font-size:13px;">拉取我的收藏夹</button>
-            <span id="zh-fetch-collections-status" style="font-size:12px; opacity:.7; align-self:center;"></span>
-        </div>
-        <div id="zh-collections-list" style="font-size:13px; line-height:1.7; max-height:160px; overflow:auto;"></div>
-        <div style="font-size:12px; opacity:.7; margin-top:6px;">点击列表中的收藏夹即可填入 ID。需登录知乎账号后操作。</div>
-    </div>
+                <section class="zh-settings-section" data-section="knowledge" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">KNOWLEDGE</span><h2>知识库与向量</h2></div>
+                        <p>配置语义搜索使用的 Embedding 服务。</p>
+                    </header>
+                    <div class="zh-settings-form-grid">
+                        <label class="zh-settings-field zh-settings-field-wide"><span>Embedding Host</span><input type="url" id="zh-cfg-embedding-host" value="${escapeSettingsAttr(cfg.embeddingHost || '')}" placeholder="留空则复用主 API Host"></label>
+                        <label class="zh-settings-field"><span>Embedding 模型</span><input type="text" id="zh-cfg-embedding-model" value="${escapeSettingsAttr(cfg.embeddingModel || 'text-embedding-3-small')}" placeholder="text-embedding-3-small"><small>更换模型后，已有向量需要重新生成。</small></label>
+                        <label class="zh-settings-field"><span>Embedding Key</span><input type="password" id="zh-cfg-embedding-key" value="${escapeSettingsAttr(cfg.embeddingKey || '')}" placeholder="留空则复用主 API Key"></label>
+                    </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection">
+                        <h3>Wiki 采集</h3>
+                        <p class="zh-settings-note">采集条数、并发、RPM、今日总览和 Obsidian 格式在“个人空间 → Wiki 采集”启动时设置。</p>
+                        <button id="zh-preview-prompts-btn" type="button" class="zh-inline-btn">查看当前系统提示词</button>
+                    </div>
+                </section>
 
-    <div style="border-top:1px dashed var(--zh-border); margin:16px 0; padding-top:14px;">
-        <div style="font-weight:bold; color:var(--zh-accent); margin-bottom:6px;">自定义主题（上传配色）</div>
-        <div style="font-size:12px; opacity:.75; margin-bottom:10px; line-height:1.6;">为每个颜色选择色值，下方括号说明该颜色对应界面的哪个部位。命名后点「添加主题」即可保存到本地，随取色按钮循环切换。</div>
-        <div id="zh-theme-var-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-bottom:12px;">
-            ${THEME_VAR_GUIDE.map(v => `
-                <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
-                    <input type="color" class="zh-theme-var" data-var="${v.key}" value="${v.def}" style="width:34px; height:28px; padding:0; border:1px solid var(--zh-border); border-radius:4px; background:none; cursor:pointer; flex-shrink:0;">
-                    <span style="min-width:0;"><b>${v.label}</b><br><span style="opacity:.65; font-size:11px;">${v.desc}</span></span>
-                </label>
-            `).join('')}
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-            <input type="text" id="zh-theme-name" placeholder="主题名，如 🌙 夜读" style="flex:1; min-width:140px; box-sizing:border-box;">
-            <button id="zh-add-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px;">添加主题</button>
-        </div>
-        <details style="margin-bottom:8px;">
-            <summary style="cursor:pointer; font-size:13px; color:var(--zh-accent);">或粘贴 JSON 主题对象导入</summary>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin:6px 0;">
-                <button id="zh-theme-tutorial-btn" type="button" class="zh-inline-btn" style="padding:5px 10px; font-size:12px;">查看模板与字段说明</button>
+                <section class="zh-settings-section" data-section="zhihu" hidden>
+                    <header class="zh-settings-section-header">
+                        <div><span class="zh-settings-kicker">ZHIHU</span><h2>知乎互动</h2></div>
+                        <p>指定推荐流一键收藏使用的收藏夹。</p>
+                    </header>
+                    <label class="zh-settings-field zh-settings-field-wide"><span>默认收藏夹 ID</span><input type="text" id="zh-cfg-collection-id" value="${escapeSettingsAttr(cfg.defaultCollectionId || '')}" placeholder="例如 905152952"></label>
+                    <div class="zh-settings-inline-actions">
+                        <button id="zh-fetch-collections-btn" type="button" class="zh-inline-btn">拉取我的收藏夹</button>
+                        <span id="zh-fetch-collections-status" class="zh-settings-status"></span>
+                    </div>
+                    <div id="zh-collections-list" class="zh-settings-list zh-collections-list"></div>
+                </section>
             </div>
-            <textarea id="zh-theme-json" rows="4" placeholder="在此粘贴主题 JSON 对象（点上方按钮查看模板与字段说明）" style="width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12px;"></textarea>
-            <button id="zh-import-theme-btn" type="button" class="zh-inline-btn" style="padding:6px 12px; font-size:13px; margin-top:6px;">导入 JSON 主题</button>
-        </details>
-        <div id="zh-custom-theme-list" style="font-size:13px; line-height:1.7;"></div>
-    </div>
 
-    <button id="zh-save-settings-btn" class="zh-modal-btn">保存并应用配置</button>
-`;
+            <footer class="zh-settings-footer">
+                <span id="zh-settings-save-status">修改仅在保存后生效</span>
+                <div>
+                    <button id="zh-cancel-settings-btn" type="button" class="zh-settings-secondary-btn">取消</button>
+                    <button id="zh-save-settings-btn" type="button" class="zh-settings-primary-btn">保存并应用</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+    `;
+};
 
 const HELP_MODAL_HTML = `
     <div style="line-height:1.9;">
@@ -140,14 +243,14 @@ const HELP_MODAL_HTML = `
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">首页与 Wiki</h3>
         <ul style="padding-left:20px; margin:0 0 14px;">
-            <li><strong>首页推荐</strong>：首组沿用页面已有 DOM，后续通过推荐 API 手动加载，每组 5 条，可在列表右上角切换推荐组。</li>
+            <li><strong>首页推荐</strong>：首组沿用页面已有 DOM，后续通过推荐 API 每批加载 6 条；可在个性化设置中选择分组翻页或连续滚动。</li>
             <li><strong>Wiki 图标</strong>：仅在首页显示。用于把已加载推荐流抓取全文、生成学习卡片和可复制/下载的 Markdown 日志。</li>
             <li><strong>Wiki Beta</strong>：当前仍偏实验功能，适合尝鲜和个人工作流验证，性能与体验还没有大量优化。</li>
         </ul>
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">设置与仓库</h3>
         <ul style="padding-left:20px; margin:0;">
-            <li><strong>设置图标</strong>：配置 OpenAI 兼容 API Host、模型、API Key、目标翻译语言、阅读笔记兴趣标签、分享格式、Wiki 参数等。</li>
+            <li><strong>设置图标</strong>：打开分类设置页，配置阅读字体、OpenAI 兼容 API、翻译、外观、知识库和知乎互动。</li>
             <li><strong>API 配置组</strong>：设置页可保存多组 Host / Model / Key，按需应用到当前 API 表单；不会改动翻译语言、Wiki 数量或其它阅读偏好。</li>
             <li><strong>仓库图标</strong>：侧边工具栏可直接跳转项目仓库。</li>
             <li><strong>仓库地址：</strong><a href="https://github.com/connectedGraph/zhihu-immersive-reader" target="_blank" rel="noopener noreferrer" style="color:var(--zh-accent);">https://github.com/connectedGraph/zhihu-immersive-reader</a></li>

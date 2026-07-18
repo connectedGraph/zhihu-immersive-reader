@@ -1,3 +1,239 @@
+    let _feedScrollController = null;
+
+    function getHomeFeedMode() {
+        return config.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
+    }
+
+    function disconnectFeedScrollController() {
+        const controller = _feedScrollController;
+        if (!controller) return;
+        controller.destroy();
+        if (_feedScrollController === controller) _feedScrollController = null;
+    }
+
+    function setupFeedScrollController({ sentinel, onRefresh }) {
+        if (!sentinel?.isConnected || typeof onRefresh !== 'function') return null;
+        disconnectFeedScrollController();
+
+        const progress = document.createElement('div');
+        progress.className = 'zh-feed-scroll-progress';
+        progress.setAttribute('role', 'progressbar');
+        progress.setAttribute('aria-label', '下一批内容加载进度');
+        progress.setAttribute('aria-valuemin', '0');
+        progress.setAttribute('aria-valuemax', '100');
+        progress.setAttribute('aria-valuenow', '0');
+
+        const progressBar = document.createElement('div');
+        progressBar.className = 'zh-feed-scroll-progress-bar';
+        const progressValue = document.createElement('span');
+        progressValue.className = 'zh-feed-scroll-progress-value';
+        progressValue.textContent = '0%';
+        progress.appendChild(progressBar);
+        progress.appendChild(progressValue);
+        document.body.appendChild(progress);
+
+        const controller = {
+            destroyed: false,
+            armed: false,
+            atEnd: false,
+            loading: false,
+            distance: 0,
+            displayedRatio: 0,
+            threshold: Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0),
+            lastScrollY: Math.max(0, window.scrollY || 0),
+            lastTouchY: null,
+            lastFrameTime: null,
+            armTimer: null,
+            readyTimer: null,
+            frameId: null,
+            progress,
+            requestRefresh: null,
+            retry: null,
+            destroy: null
+        };
+
+        const isAtDocumentEnd = () => {
+            const root = document.documentElement;
+            const body = document.body;
+            const viewportHeight = window.innerHeight || root.clientHeight || 0;
+            const documentHeight = Math.max(root.scrollHeight, body?.scrollHeight || 0);
+            return (window.scrollY || 0) + viewportHeight >= documentHeight - 8;
+        };
+
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+        const cancelReadyRefresh = () => {
+            if (controller.readyTimer === null) return;
+            clearTimeout(controller.readyTimer);
+            controller.readyTimer = null;
+        };
+
+        const renderProgress = timestamp => {
+            controller.frameId = null;
+            if (controller.destroyed) return;
+            const targetRatio = Math.max(0, Math.min(1, controller.distance / controller.threshold));
+            const elapsed = controller.lastFrameTime === null ? 16 : Math.min(64, Math.max(0, timestamp - controller.lastFrameTime));
+            controller.lastFrameTime = timestamp;
+            if (prefersReducedMotion) {
+                controller.displayedRatio = targetRatio;
+            } else {
+                const follow = 1 - Math.exp(-elapsed / 85);
+                controller.displayedRatio += (targetRatio - controller.displayedRatio) * follow;
+                if (Math.abs(targetRatio - controller.displayedRatio) < 0.001) controller.displayedRatio = targetRatio;
+            }
+
+            const percent = Math.round(controller.displayedRatio * 100);
+            const isReady = targetRatio >= 1 && controller.displayedRatio >= 0.995;
+            progressBar.style.setProperty('--zh-feed-progress-angle', `${controller.displayedRatio * 360}deg`);
+            progressValue.textContent = controller.loading ? '...' : controller.atEnd ? `${percent}%` : '↓';
+            progress.setAttribute('aria-valuenow', String(percent));
+            progress.setAttribute('aria-valuetext', controller.atEnd ? `下一批加载进度 ${percent}%` : '滚动到列表底部后开始累计');
+            progress.classList.toggle('is-at-end', controller.atEnd);
+            progress.classList.toggle('is-ready', isReady);
+
+            if (isReady && !controller.loading && controller.readyTimer === null) {
+                controller.readyTimer = setTimeout(() => {
+                    controller.readyTimer = null;
+                    if (controller.atEnd && controller.distance >= controller.threshold) requestRefresh(false);
+                }, prefersReducedMotion ? 0 : 140);
+            } else if (!isReady) {
+                cancelReadyRefresh();
+            }
+
+            if (Math.abs(targetRatio - controller.displayedRatio) >= 0.001) scheduleProgressRender();
+        };
+
+        const scheduleProgressRender = () => {
+            if (controller.frameId === null) controller.frameId = requestAnimationFrame(renderProgress);
+        };
+
+        const scheduleArm = (delay = 120) => {
+            clearTimeout(controller.armTimer);
+            controller.armed = false;
+            controller.armTimer = setTimeout(() => {
+                if (controller.destroyed) return;
+                controller.lastScrollY = Math.max(0, window.scrollY || 0);
+                controller.armed = true;
+            }, delay);
+        };
+
+        const requestRefresh = async force => {
+            if (controller.destroyed || controller.loading || !sentinel.isConnected) return;
+            if (!force && (!controller.armed || controller.distance < controller.threshold)) return;
+            cancelReadyRefresh();
+            controller.loading = true;
+            controller.armed = false;
+            progress.classList.add('is-loading');
+            progressValue.textContent = '...';
+            try {
+                await onRefresh(controller);
+            } finally {
+                if (!controller.destroyed) {
+                    controller.loading = false;
+                    controller.distance = 0;
+                    progress.classList.remove('is-loading', 'is-ready');
+                    scheduleProgressRender();
+                    scheduleArm();
+                }
+            }
+        };
+
+        const recordDistance = delta => {
+            if (!controller.armed || !controller.atEnd || controller.loading || !Number.isFinite(delta) || delta <= 0) return;
+            controller.distance = Math.min(controller.threshold, controller.distance + delta);
+            scheduleProgressRender();
+        };
+
+        const resetProgress = () => {
+            if (controller.distance === 0) return;
+            controller.distance = 0;
+            scheduleProgressRender();
+        };
+
+        const updateEndState = () => {
+            const nextAtEnd = isAtDocumentEnd();
+            if (!nextAtEnd) resetProgress();
+            if (controller.atEnd !== nextAtEnd) {
+                controller.atEnd = nextAtEnd;
+                scheduleProgressRender();
+            }
+        };
+
+        const onScroll = () => {
+            const scrollY = Math.max(0, window.scrollY || 0);
+            controller.lastScrollY = scrollY;
+            if (!controller.armed) { scheduleArm(); return; }
+            updateEndState();
+        };
+
+        const onWheel = event => {
+            if (!controller.armed || controller.loading) return;
+            updateEndState();
+            if (!controller.atEnd) return;
+            if (event.deltaY < 0) { resetProgress(); return; }
+            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (window.innerHeight || 1) : 1;
+            recordDistance(event.deltaY * unit);
+        };
+
+        const onTouchStart = event => {
+            controller.lastTouchY = event.touches[0]?.clientY ?? null;
+            updateEndState();
+        };
+
+        const onTouchMove = event => {
+            const touchY = event.touches[0]?.clientY;
+            if (!Number.isFinite(touchY) || !Number.isFinite(controller.lastTouchY)) return;
+            const delta = controller.lastTouchY - touchY;
+            controller.lastTouchY = touchY;
+            updateEndState();
+            if (!controller.atEnd) return;
+            if (delta < 0) { resetProgress(); return; }
+            recordDistance(delta);
+        };
+
+        const onResize = () => {
+            const previousThreshold = controller.threshold;
+            controller.threshold = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0);
+            controller.distance = Math.min(controller.threshold, controller.distance * controller.threshold / previousThreshold);
+            updateEndState();
+            scheduleProgressRender();
+        };
+
+        controller.requestRefresh = requestRefresh;
+        controller.retry = () => requestRefresh(true);
+        controller.destroy = () => {
+            if (controller.destroyed) return;
+            controller.destroyed = true;
+            clearTimeout(controller.armTimer);
+            cancelReadyRefresh();
+            if (controller.frameId !== null) cancelAnimationFrame(controller.frameId);
+            window.removeEventListener('scroll', onScroll);
+            window.removeEventListener('wheel', onWheel);
+            window.removeEventListener('touchstart', onTouchStart);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('resize', onResize);
+            progress.remove();
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('wheel', onWheel, { passive: true });
+        window.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('resize', onResize, { passive: true });
+        _feedScrollController = controller;
+        updateEndState();
+        scheduleArm();
+        return controller;
+    }
+
+    function getFeedAnchorScrollTop(element) {
+        if (!element) return 0;
+        if (typeof element.getBoundingClientRect === 'function') {
+            return Math.max(0, Math.round(element.getBoundingClientRect().top + window.scrollY - 12));
+        }
+        return Math.max(0, Number(element.offsetTop) || 0);
+    }
+
     function getHomeCacheKey() {
         return `${location.origin}${location.pathname}::topstory`;
     }
@@ -103,6 +339,51 @@
         return (richText?.innerText || item.innerText || '').replace(/\s+/g, ' ').trim();
     }
 
+    function parseHomeCountValue(raw) {
+        if (raw == null || raw === '') return null;
+        const text = String(raw).replace(/,/g, '').replace(/\s+/g, '').trim();
+        const match = text.match(/^([\d.]+)(万|亿)?$/);
+        if (!match) return null;
+        const value = Number(match[1]);
+        if (!Number.isFinite(value)) return null;
+        const multiplier = match[2] === '亿' ? 100000000 : match[2] === '万' ? 10000 : 1;
+        return Math.round(value * multiplier);
+    }
+
+    function getHomeDomCount(item, itemprop, kind) {
+        const metaValue = item.querySelector(`meta[itemprop="${itemprop}"]`)?.getAttribute('content');
+        const fromMeta = parseHomeCountValue(metaValue);
+        if (fromMeta != null) return fromMeta;
+        if (kind === 'follower') return null;
+        const actionText = (item.querySelector('.ContentItem-actions')?.textContent || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
+        if (kind === 'voteup') {
+            const match = actionText.match(/赞同\s*([\d.]+\s*(?:万|亿)?)/);
+            return parseHomeCountValue(match?.[1]);
+        }
+        const match = actionText.match(/([\d.]+\s*(?:万|亿)?)\s*条评论/);
+        if (match) return parseHomeCountValue(match[1]);
+        return /添加评论/.test(actionText) ? 0 : null;
+    }
+
+    function formatHomeCardCount(value) {
+        const count = Number(value);
+        return Number.isFinite(count) ? Math.max(0, Math.round(count)).toLocaleString('zh-CN') : '';
+    }
+
+    function getHomeCardStats(itemRecord = {}) {
+        const stats = [];
+        if (itemRecord.voteup_count != null && Number.isFinite(Number(itemRecord.voteup_count))) {
+            stats.push(`${formatHomeCardCount(itemRecord.voteup_count)} 赞同`);
+        }
+        if (itemRecord.comment_count != null && Number.isFinite(Number(itemRecord.comment_count))) {
+            stats.push(Number(itemRecord.comment_count) > 0 ? `${formatHomeCardCount(itemRecord.comment_count)} 评论` : '暂无评论');
+        }
+        if (itemRecord.author_follower_count != null && Number.isFinite(Number(itemRecord.author_follower_count)) && Number(itemRecord.author_follower_count) > 0) {
+            stats.push(`${formatHomeCardCount(itemRecord.author_follower_count)} 粉丝`);
+        }
+        return stats;
+    }
+
     function getWebUrlFromApiTarget(target = {}) {
         const type = target.type || '';
         if (type === 'answer' && target.question?.id && target.id) {
@@ -136,6 +417,11 @@
     function getHomeApiAuthorHeadline(target = {}, brief = {}) {
         const author = target.author || brief.member || {};
         return (author.headline || author.description || author.bio || brief.headline || brief.description || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getHomeApiAuthorFollowerCount(target = {}, brief = {}) {
+        const author = target.author || brief.member || {};
+        return parseHomeCountValue(author.follower_count ?? author.followerCount ?? brief.follower_count);
     }
 
     function getHomeApiThumbnail(target = {}, brief = {}) {
@@ -206,6 +492,7 @@
         const author = getHomeApiTargetAuthor(target, brief);
         const authorAvatar = getHomeApiAuthorAvatar(target, brief);
         const authorHeadline = getHomeApiAuthorHeadline(target, brief);
+        const authorFollowerCount = getHomeApiAuthorFollowerCount(target, brief);
         const thumbnail = getHomeApiThumbnail(target, brief);
         const stats = formatHomeApiStats(target);
         const primaryContent = target.content || target.detail || '';
@@ -220,6 +507,7 @@
             author,
             authorAvatar,
             authorHeadline,
+            author_follower_count: authorFollowerCount,
             thumbnail,
             stats,
             snippet: text.slice(0, 180),
@@ -270,6 +558,9 @@
             type: getHomeItemType(url),
             title: getHomeItemTitle(item),
             author: getHomeItemAuthor(item),
+            author_follower_count: getHomeDomCount(item, 'zhihu:followerCount', 'follower'),
+            voteup_count: getHomeDomCount(item, 'upvoteCount', 'voteup'),
+            comment_count: getHomeDomCount(item, 'commentCount', 'comment'),
             snippet: text.slice(0, 180),
             text,
             sourceTop: getElementPageTop(item),
@@ -283,7 +574,7 @@
             updateWikiProgress(message, 'collect');
         } else {
             if (statusEl) statusEl.textContent = message;
-            showCollectOverlay(message);
+            if (!statusEl?.classList?.contains('zh-home-scroll-status')) showCollectOverlay(message);
         }
     }
 
@@ -397,12 +688,13 @@
     function persistHomeFeedCache() {
         syncHomeItemsFromGroups();
         _homeFeedCache.set(getHomeCacheKey(), {
-            schemaVersion: 2,
+            schemaVersion: 3,
             groups: _homeState.groups,
             items: _homeState.items,
             currentIndex: _homeState.currentIndex || 0,
             currentGroupIndex: _homeState.currentGroupIndex || 0,
             currentIndexInGroup: _homeState.currentIndexInGroup || 0,
+            listScrollY: _homeState.listScrollY || 0,
             exitScrollY: _homeState.exitScrollY || _homeState.originalScrollY,
             exhausted: _homeState.exhausted,
             apiNextUrl: _homeState.apiNextUrl,
@@ -489,6 +781,19 @@
         crossOriginSet('zh-home-layout', layout);
     }
 
+    function getHomeListEntries() {
+        syncHomeItemsFromGroups();
+        if (getHomeFeedMode() === 'scroll') {
+            return _homeState.groups.flatMap((group, groupIndex) => group.map((itemRecord, indexInGroup) => ({
+                itemRecord,
+                groupIndex,
+                indexInGroup
+            })));
+        }
+        const groupIndex = _homeState.currentGroupIndex || 0;
+        return getCurrentHomeGroup().map((itemRecord, indexInGroup) => ({ itemRecord, groupIndex, indexInGroup }));
+    }
+
     function renderHomeGroupToolbar(wrapper) {
         const groups = normalizeHomeGroups(_homeState.groups);
         const groupIndex = Math.max(0, Math.min(_homeState.currentGroupIndex || 0, Math.max(0, groups.length - 1)));
@@ -504,17 +809,20 @@
             return btn;
         };
 
-        toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setHomeGroup(groupIndex - 1)));
-
         const indicator = document.createElement('span');
         indicator.className = 'zh-home-nav-indicator';
-        indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
-        toolbar.appendChild(indicator);
-
-        toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setHomeGroup(groupIndex + 1)));
-
-        if (!_homeState.exhausted) {
-            toolbar.appendChild(makeBtn('加载更多', '+', _homeState.loadingMore, () => loadMoreHomeAndRender()));
+        if (getHomeFeedMode() === 'scroll') {
+            indicator.classList.add('zh-home-scroll-count');
+            indicator.textContent = `已加载 ${syncHomeItemsFromGroups().length} 条`;
+            toolbar.appendChild(indicator);
+        } else {
+            toolbar.appendChild(makeBtn('上一组', '‹', groupIndex <= 0, () => setHomeGroup(groupIndex - 1)));
+            indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
+            toolbar.appendChild(indicator);
+            toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setHomeGroup(groupIndex + 1)));
+            if (!_homeState.exhausted) {
+                toolbar.appendChild(makeBtn('加载更多', '+', _homeState.loadingMore, () => loadMoreHomeAndRender()));
+            }
         }
 
         const layoutBtn = document.createElement('button');
@@ -526,16 +834,66 @@
             : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>';
         layoutBtn.addEventListener('click', () => {
             setHomeLayout(isSingle ? 'double' : 'single');
-            renderHomeList();
+            renderHomeList({ preserveScroll: getHomeFeedMode() === 'scroll' });
         });
         toolbar.appendChild(layoutBtn);
 
         wrapper.appendChild(toolbar);
     }
 
-    function renderHomeList() {
+    async function refreshHomeAfterScroll(sentinel, controller) {
+        if (_homeState.loadingMore || _homeState.exhausted || !sentinel.isConnected) return;
+        sentinel.classList.add('is-loading');
+        sentinel.textContent = '正在加载更多推荐...';
+        try {
+            const batch = await loadNextHomeGroup(sentinel, {
+                switchToNewGroup: false,
+                label: '连续加载首页推荐'
+            });
+            if (batch.length) {
+                renderHomeList({ focusLatestBatch: true });
+            } else {
+                disconnectFeedScrollController();
+                sentinel.classList.remove('is-loading');
+                sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+            }
+        } catch (error) {
+            sentinel.classList.remove('is-loading');
+            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
+            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
+        }
+    }
+
+    function prepareHomeScrollRefresh(wrapper) {
+        disconnectFeedScrollController();
+        if (getHomeFeedMode() !== 'scroll') return;
+
+        const sentinel = wrapper.querySelector('#zh-home-scroll-sentinel') || document.createElement('div');
+        sentinel.id = 'zh-home-scroll-sentinel';
+        sentinel.className = 'zh-home-scroll-status';
+        if (_homeState.exhausted) {
+            sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+            if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+            return;
+        }
+        sentinel.textContent = '';
+        sentinel.setAttribute('aria-label', '继续加载首页推荐');
+        if (!sentinel.isConnected) wrapper.appendChild(sentinel);
+
+        return () => {
+            if (_homeState.collecting || !sentinel.isConnected) return null;
+            return setupFeedScrollController({
+                sentinel,
+                onRefresh: controller => refreshHomeAfterScroll(sentinel, controller)
+            });
+        };
+    }
+
+    function renderHomeList(options = {}) {
         const wrapper = document.getElementById('immersive-wrapper');
         if (!wrapper) return;
+        const previousScrollY = window.scrollY;
+        disconnectFeedScrollController();
         _homeState.view = 'list';
         restoreLiveMount();
         clearHomeTranslations();
@@ -546,10 +904,9 @@
         appendFeedSwitchHeader(wrapper, 'home');
         renderHomeGroupToolbar(wrapper);
 
-        const group = getCurrentHomeGroup();
-        const groupIndex = _homeState.currentGroupIndex || 0;
+        const entries = getHomeListEntries();
 
-        if (!group.length) {
+        if (!entries.length) {
             const empty = document.createElement('div');
             empty.className = 'zh-collect-status';
             empty.textContent = '没有采集到可展示的首页推荐。';
@@ -558,8 +915,14 @@
         }
 
         const grid = document.createElement('div');
-        grid.className = 'zh-home-grid' + (getHomeLayout() === 'single' ? ' zh-home-grid-single' : '');
-        group.forEach((itemRecord, index) => {
+        grid.className = 'zh-home-grid' + (getHomeLayout() === 'single' ? ' zh-home-grid-single' : '') + (getHomeFeedMode() === 'scroll' ? ' zh-home-grid-scroll' : '');
+        entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
+            if (getHomeFeedMode() === 'scroll' && indexInGroup === 0 && groupIndex > 0) {
+                const divider = document.createElement('div');
+                divider.className = 'zh-feed-batch-divider';
+                divider.innerHTML = `<span>第 ${groupIndex + 1} 批 · 6 条推荐</span>`;
+                grid.appendChild(divider);
+            }
             const card = document.createElement('div');
             card.className = 'zh-home-card';
 
@@ -576,7 +939,7 @@
                 meta.appendChild(avatar);
             }
             const metaText = document.createElement('span');
-            metaText.textContent = [itemRecord.author, itemRecord.stats].filter(Boolean).join(' · ');
+            metaText.textContent = itemRecord.author || '未知作者';
             meta.appendChild(metaText);
             if (itemRecord.type) {
                 const typeTag = document.createElement('span');
@@ -592,13 +955,42 @@
             card.appendChild(title);
             card.appendChild(meta);
             if (itemRecord.snippet) card.appendChild(snippet);
-            card.addEventListener('click', () => renderHomeItem(index, groupIndex));
+            const stats = getHomeCardStats(itemRecord);
+            if (stats.length) {
+                const statsFooter = document.createElement('div');
+                statsFooter.className = 'zh-home-card-stats';
+                stats.forEach(value => {
+                    const stat = document.createElement('span');
+                    stat.textContent = value;
+                    statsFooter.appendChild(stat);
+                });
+                card.appendChild(statsFooter);
+            }
+            card.addEventListener('click', () => {
+                _homeState.listScrollY = window.scrollY;
+                renderHomeItem(indexInGroup, groupIndex);
+            });
             grid.appendChild(card);
         });
         wrapper.appendChild(grid);
+        const activateScrollRefresh = prepareHomeScrollRefresh(wrapper);
 
         setupImageToggles();
-        window.scrollTo(0, 0);
+        const latestDivider = Array.from(wrapper.querySelectorAll('.zh-feed-batch-divider')).pop();
+        const targetScrollY = options.focusLatestBatch
+            ? getFeedAnchorScrollTop(latestDivider)
+            : options.scrollY ?? (options.restoreScroll ? _homeState.listScrollY : options.preserveScroll ? previousScrollY : null);
+        const positionList = () => {
+            window.scrollTo(0, options.focusLatestBatch || options.preserveScroll || options.restoreScroll
+                ? Math.max(0, Number(targetScrollY) || 0)
+                : 0);
+            if (options.startScrollRefresh !== false) {
+                requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
+            }
+        };
+        if (options.focusLatestBatch || options.preserveScroll || options.restoreScroll) requestAnimationFrame(positionList);
+        else positionList();
+        return () => requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
     }
 
     function setCurrentHomeItem(indexInGroup = 0, groupIndex = _homeState.currentGroupIndex) {
@@ -750,6 +1142,7 @@
         const position = setCurrentHomeItem(indexInGroup, groupIndex);
         const itemRecord = position.item;
         if (!wrapper || !itemRecord) return;
+        disconnectFeedScrollController();
         
         logFeedItemReadingRecord(itemRecord);
 
@@ -786,7 +1179,7 @@
         const backBtn = document.createElement('button');
         backBtn.className = 'zh-inline-btn';
         backBtn.textContent = '返回列表';
-        backBtn.addEventListener('click', renderHomeList);
+        backBtn.addEventListener('click', () => renderHomeList({ restoreScroll: true }));
         toolbar.appendChild(backBtn);
 
         const current = document.createElement('span');
@@ -860,12 +1253,13 @@
 
             const cacheKey = getHomeCacheKey();
             const cached = _homeFeedCache.get(cacheKey);
-            if (cached?.schemaVersion === 2 && Array.isArray(cached.groups) && cached.groups.length) {
+            if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
                 _homeState.groups = normalizeHomeGroups(cached.groups);
                 syncHomeItemsFromGroups();
                 _homeState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _homeState.groups.length - 1));
                 _homeState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_homeState.groups[_homeState.currentGroupIndex]?.length || 1) - 1));
                 _homeState.currentIndex = getHomeGroupStartIndex(_homeState.currentGroupIndex) + _homeState.currentIndexInGroup;
+                _homeState.listScrollY = cached.listScrollY || 0;
                 _homeState.exitScrollY = cached.exitScrollY || _homeState.items[_homeState.currentIndex]?.sourceTop || _homeState.originalScrollY;
                 _homeState.exhausted = !!cached.exhausted;
                 _homeState.apiNextUrl = cached.apiNextUrl || '';
@@ -899,7 +1293,9 @@
             _articleNode = wrapper;
             createQuestionToolsPanel();
             window._isImmersive = true;
-            renderHomeList();
+            const startScrollRefresh = renderHomeList({ startScrollRefresh: false });
+            _homeState.collecting = false;
+            startScrollRefresh?.();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;
