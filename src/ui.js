@@ -373,6 +373,10 @@
             </div>
         `;
         document.body.appendChild(overlay);
+        // 设置页是全屏遮罩，设置页内打开的说明/预览弹窗必须位于其上方。
+        if (id !== 'zh-settings-modal' && document.getElementById('zh-settings-modal')) {
+            overlay.style.zIndex = '100000001';
+        }
 
         const closeWithAnim = () => {
             overlay.classList.add('zh-modal-closing');

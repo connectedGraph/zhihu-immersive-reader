@@ -197,6 +197,33 @@
         }));
     }
 
+    function getLocalStoredCollectionId() {
+        try {
+            const raw = localStorage.getItem('zh-immersive-config');
+            if (!raw) return '';
+            const stored = JSON.parse(raw);
+            return String(stored?.defaultCollectionId || '').trim();
+        } catch (err) {
+            return '';
+        }
+    }
+
+    async function autoInitializeDefaultCollection() {
+        // 仅以当前站点 localStorage 是否已有收藏夹 ID 作为一次性初始化条件。
+        if (getLocalStoredCollectionId()) return;
+
+        try {
+            const collections = await fetchMyCollections(50);
+            const defaultCollection = collections.find(item => item.isDefault);
+            if (!defaultCollection?.id) return;
+            saveConfig({ defaultCollectionId: defaultCollection.id });
+            console.info(`知乎沉浸式阅读：已自动设置默认收藏夹「${defaultCollection.title}」(${defaultCollection.id})`);
+        } catch (err) {
+            // 启动初始化失败不影响阅读；下次脚本启动且仍未配置时再尝试。
+            console.debug('知乎沉浸式阅读：自动获取默认收藏夹失败', err?.message || err);
+        }
+    }
+
     // ─── Action Bar 渲染层 ───────────────────────────────────────────────
 
     const ACTION_ICONS = {

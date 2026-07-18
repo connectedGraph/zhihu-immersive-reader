@@ -568,7 +568,7 @@
             if (imageRemovedCount > 0) {
                 const note = document.createElement('div');
                 note.className = 'zh-share-warning';
-                note.textContent = `PNG 长图说明：为保证浏览器稳定导出，已忽略 ${imageRemovedCount} 张图片；HTML/SVG 导出通常可保留原图链接。`;
+                note.textContent = `${options.format === 'webp' ? 'WebP' : 'PNG'} 长图说明：为保证浏览器稳定导出，已忽略 ${imageRemovedCount} 张图片；HTML/SVG 导出通常可保留原图链接。`;
                 const source = page.querySelector('.zh-share-source');
                 if (source?.parentNode) source.parentNode.insertBefore(note, source);
                 else page.appendChild(note);
@@ -617,7 +617,7 @@ ${page.xhtml}
 </svg>`;
     }
 
-    function renderSvgToPngBlob(svgText, width, height) {
+    function renderSvgToImageBlob(svgText, width, height, mimeType, quality = 0.92) {
         return new Promise((resolve, reject) => {
             const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(svgBlob);
@@ -639,13 +639,20 @@ ${page.xhtml}
                     ctx.drawImage(img, 0, 0, width, height);
                     URL.revokeObjectURL(url);
                     canvas.toBlob(blob => {
-                        if (blob) resolve(blob);
-                        else reject(new Error('PNG Blob 生成失败'));
-                    }, 'image/png');
+                        if (!blob) {
+                            reject(new Error(`${mimeType === 'image/webp' ? 'WebP' : 'PNG'} Blob 生成失败`));
+                            return;
+                        }
+                        if (mimeType === 'image/webp' && blob.type !== 'image/webp') {
+                            reject(new Error('当前浏览器不支持 WebP Canvas 导出，请改用 PNG、SVG 或 HTML 格式。'));
+                            return;
+                        }
+                        resolve(blob);
+                    }, mimeType, quality);
                 } catch (err) {
                     URL.revokeObjectURL(url);
                     if (err.message?.includes('Tainted') || err.name === 'SecurityError') {
-                        reject(new Error('PNG 导出被浏览器安全策略阻止（Canvas 被污染）。请尝试使用 SVG 或 HTML 格式导出。'));
+                        reject(new Error(`${mimeType === 'image/webp' ? 'WebP' : 'PNG'} 导出被浏览器安全策略阻止（Canvas 被污染）。请尝试使用 SVG 或 HTML 格式导出。`));
                     } else {
                         reject(err);
                     }
@@ -662,20 +669,27 @@ ${page.xhtml}
     async function runZeroLossShare() {
         try {
             const content = getZeroLossShareContent();
-            const format = ['html', 'svg', 'png'].includes(config.shareExportFormat) ? config.shareExportFormat : 'svg';
-            if (format === 'png') showCollectOverlay('正在准备 PNG 长图...');
+            const format = ['html', 'svg', 'png', 'webp'].includes(config.shareExportFormat) ? config.shareExportFormat : 'svg';
+            const isRasterFormat = format === 'png' || format === 'webp';
+            if (isRasterFormat) showCollectOverlay(`正在准备 ${format === 'webp' ? 'WebP' : 'PNG'} 长图...`);
             const page = await renderZeroLossSharePage(content.node, {
                 inlineImages: format === 'svg',
-                stripImages: format === 'png'
+                stripImages: isRasterFormat,
+                format
             });
             const filename = `${sanitizeShareFilename(content.title || content.sourceType)}.${format}`;
             if (format === 'html') {
                 downloadTextFile(filename, buildZeroLossShareHTML(page), 'text/html;charset=utf-8');
-            } else if (format === 'png') {
-                showCollectOverlay('正在渲染 PNG 长图...');
+            } else if (isRasterFormat) {
+                showCollectOverlay(`正在渲染 ${format === 'webp' ? 'WebP' : 'PNG'} 长图...`);
                 const svgText = buildZeroLossShareSVG(page);
-                const pngBlob = await renderSvgToPngBlob(svgText, page.width, page.height);
-                downloadBlobFile(filename, pngBlob);
+                const blob = await renderSvgToImageBlob(
+                    svgText,
+                    page.width,
+                    page.height,
+                    format === 'webp' ? 'image/webp' : 'image/png'
+                );
+                downloadBlobFile(filename, blob);
             } else {
                 downloadTextFile(filename, buildZeroLossShareSVG(page), 'image/svg+xml;charset=utf-8');
             }

@@ -63,7 +63,7 @@
 
 ### 零损分享
 
-- 将当前沉浸阅读页面导出为 SVG / PNG / HTML
+- 将当前沉浸阅读页面导出为 SVG / PNG / WebP / HTML
 - 保留主题配色和排版，适合跨平台分享
 
 ### 信息流 Wiki
@@ -137,13 +137,13 @@
 
 ## 开发
 
-源码拆分为模块化文件，位于 `src/` 目录。构建单文件发布版本：
+源码唯一维护来源是 `src/` 目录，历史单文件源码已移除。构建单文件发布版本：
 
 ```bash
 node build.js
 ```
 
-输出 `dist/bundle.user.js`，可直接用于 Greasyfork 发布。
+输出 `dist/bundle.user.js`，可直接用于 Greasy Fork 发布；`dist/` 仅保存构建后的发布产物。
 
 ---
 

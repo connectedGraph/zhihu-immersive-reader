@@ -23,7 +23,6 @@
 // @connect      www.zhihu.com
 // @connect      zhuanlan.zhihu.com
 // @connect      *.zhihu.com
-// @connect      html2png.dev
 // @connect      *
 // @license      MIT
 // @downloadURL https://update.greasyfork.org/scripts/573678/%E6%B2%89%E6%B5%B8%E5%BC%8F%E7%9F%A5%E4%B9%8E_%E8%AE%A9%E7%9F%A5%E4%B9%8E%E6%88%90%E4%B8%BA%E4%BD%A0%E6%B7%B1%E5%BA%A6%E9%98%85%E8%AF%BB%E3%80%81%E5%A4%96%E8%AF%AD%E5%AD%A6%E4%B9%A0%E3%80%81%E8%AE%A4%E7%9F%A5%E6%8F%90%E5%8D%87%E7%9A%84%E5%B7%A5%E5%85%B7.user.js
@@ -1267,7 +1266,7 @@ const HELP_MODAL_HTML = `
             <li><strong>表达收藏本图标</strong>：打开表达本，查看划词积累；支持复制 Markdown、下载 Markdown / JSON、清空。</li>
             <li><strong>划词右键</strong>：选中文字后右键，可进行 AI 划词解析，也可把原文、译文、上下文和 AI 批注加入表达本。</li>
             <li><strong>阅读笔记图标</strong>：为当前文章或回答生成短报告，记录 archetype、oneliner、impression、depth、relevance 和标签；报告可保存、复看、导出。</li>
-            <li><strong>分享图标</strong>：导出当前文章或回答的纯净分享稿，支持 HTML、SVG、PNG 长图。PNG 为稳定下载会忽略正文图片，并在导出结果中标注。</li>
+            <li><strong>分享图标</strong>：导出当前文章或回答的纯净分享稿，支持 HTML、SVG、PNG 和 WebP 长图。PNG/WebP 为稳定下载会忽略正文图片，并在导出结果中标注。</li>
         </ul>
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">首页与 Wiki</h3>
@@ -2629,6 +2628,33 @@ const HELP_MODAL_HTML = `
         }));
     }
 
+    function getLocalStoredCollectionId() {
+        try {
+            const raw = localStorage.getItem('zh-immersive-config');
+            if (!raw) return '';
+            const stored = JSON.parse(raw);
+            return String(stored?.defaultCollectionId || '').trim();
+        } catch (err) {
+            return '';
+        }
+    }
+
+    async function autoInitializeDefaultCollection() {
+        // 仅以当前站点 localStorage 是否已有收藏夹 ID 作为一次性初始化条件。
+        if (getLocalStoredCollectionId()) return;
+
+        try {
+            const collections = await fetchMyCollections(50);
+            const defaultCollection = collections.find(item => item.isDefault);
+            if (!defaultCollection?.id) return;
+            saveConfig({ defaultCollectionId: defaultCollection.id });
+            console.info(`知乎沉浸式阅读：已自动设置默认收藏夹「${defaultCollection.title}」(${defaultCollection.id})`);
+        } catch (err) {
+            // 启动初始化失败不影响阅读；下次脚本启动且仍未配置时再尝试。
+            console.debug('知乎沉浸式阅读：自动获取默认收藏夹失败', err?.message || err);
+        }
+    }
+
     // ─── Action Bar 渲染层 ───────────────────────────────────────────────
 
     const ACTION_ICONS = {
@@ -3325,6 +3351,10 @@ const HELP_MODAL_HTML = `
             </div>
         `;
         document.body.appendChild(overlay);
+        // 设置页是全屏遮罩，设置页内打开的说明/预览弹窗必须位于其上方。
+        if (id !== 'zh-settings-modal' && document.getElementById('zh-settings-modal')) {
+            overlay.style.zIndex = '100000001';
+        }
 
         const closeWithAnim = () => {
             overlay.classList.add('zh-modal-closing');
@@ -5545,7 +5575,7 @@ archetype, oneliner, impression, depth, relevance, tags。`;
             if (imageRemovedCount > 0) {
                 const note = document.createElement('div');
                 note.className = 'zh-share-warning';
-                note.textContent = `PNG 长图说明：为保证浏览器稳定导出，已忽略 ${imageRemovedCount} 张图片；HTML/SVG 导出通常可保留原图链接。`;
+                note.textContent = `${options.format === 'webp' ? 'WebP' : 'PNG'} 长图说明：为保证浏览器稳定导出，已忽略 ${imageRemovedCount} 张图片；HTML/SVG 导出通常可保留原图链接。`;
                 const source = page.querySelector('.zh-share-source');
                 if (source?.parentNode) source.parentNode.insertBefore(note, source);
                 else page.appendChild(note);
@@ -5594,7 +5624,7 @@ ${page.xhtml}
 </svg>`;
     }
 
-    function renderSvgToPngBlob(svgText, width, height) {
+    function renderSvgToImageBlob(svgText, width, height, mimeType, quality = 0.92) {
         return new Promise((resolve, reject) => {
             const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(svgBlob);
@@ -5616,13 +5646,20 @@ ${page.xhtml}
                     ctx.drawImage(img, 0, 0, width, height);
                     URL.revokeObjectURL(url);
                     canvas.toBlob(blob => {
-                        if (blob) resolve(blob);
-                        else reject(new Error('PNG Blob 生成失败'));
-                    }, 'image/png');
+                        if (!blob) {
+                            reject(new Error(`${mimeType === 'image/webp' ? 'WebP' : 'PNG'} Blob 生成失败`));
+                            return;
+                        }
+                        if (mimeType === 'image/webp' && blob.type !== 'image/webp') {
+                            reject(new Error('当前浏览器不支持 WebP Canvas 导出，请改用 PNG、SVG 或 HTML 格式。'));
+                            return;
+                        }
+                        resolve(blob);
+                    }, mimeType, quality);
                 } catch (err) {
                     URL.revokeObjectURL(url);
                     if (err.message?.includes('Tainted') || err.name === 'SecurityError') {
-                        reject(new Error('PNG 导出被浏览器安全策略阻止（Canvas 被污染）。请尝试使用 SVG 或 HTML 格式导出。'));
+                        reject(new Error(`${mimeType === 'image/webp' ? 'WebP' : 'PNG'} 导出被浏览器安全策略阻止（Canvas 被污染）。请尝试使用 SVG 或 HTML 格式导出。`));
                     } else {
                         reject(err);
                     }
@@ -5639,20 +5676,27 @@ ${page.xhtml}
     async function runZeroLossShare() {
         try {
             const content = getZeroLossShareContent();
-            const format = ['html', 'svg', 'png'].includes(config.shareExportFormat) ? config.shareExportFormat : 'svg';
-            if (format === 'png') showCollectOverlay('正在准备 PNG 长图...');
+            const format = ['html', 'svg', 'png', 'webp'].includes(config.shareExportFormat) ? config.shareExportFormat : 'svg';
+            const isRasterFormat = format === 'png' || format === 'webp';
+            if (isRasterFormat) showCollectOverlay(`正在准备 ${format === 'webp' ? 'WebP' : 'PNG'} 长图...`);
             const page = await renderZeroLossSharePage(content.node, {
                 inlineImages: format === 'svg',
-                stripImages: format === 'png'
+                stripImages: isRasterFormat,
+                format
             });
             const filename = `${sanitizeShareFilename(content.title || content.sourceType)}.${format}`;
             if (format === 'html') {
                 downloadTextFile(filename, buildZeroLossShareHTML(page), 'text/html;charset=utf-8');
-            } else if (format === 'png') {
-                showCollectOverlay('正在渲染 PNG 长图...');
+            } else if (isRasterFormat) {
+                showCollectOverlay(`正在渲染 ${format === 'webp' ? 'WebP' : 'PNG'} 长图...`);
                 const svgText = buildZeroLossShareSVG(page);
-                const pngBlob = await renderSvgToPngBlob(svgText, page.width, page.height);
-                downloadBlobFile(filename, pngBlob);
+                const blob = await renderSvgToImageBlob(
+                    svgText,
+                    page.width,
+                    page.height,
+                    format === 'webp' ? 'image/webp' : 'image/png'
+                );
+                downloadBlobFile(filename, blob);
             } else {
                 downloadTextFile(filename, buildZeroLossShareSVG(page), 'image/svg+xml;charset=utf-8');
             }
@@ -12961,7 +13005,11 @@ function enterImmersive() {
 
 
 
+    // 启动：仅在尚未配置收藏夹时后台尝试获取知乎默认收藏夹，不阻塞沉浸模式进入。
+    autoInitializeDefaultCollection();
+
     // 启动：非编辑页时自动进入沉浸模式
     if (!isEditPage()) window.toggleImmersiveMode();
 })();
+
 

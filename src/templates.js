@@ -273,7 +273,7 @@ const HELP_MODAL_HTML = `
             <li><strong>表达收藏本图标</strong>：打开表达本，查看划词积累；支持复制 Markdown、下载 Markdown / JSON、清空。</li>
             <li><strong>划词右键</strong>：选中文字后右键，可进行 AI 划词解析，也可把原文、译文、上下文和 AI 批注加入表达本。</li>
             <li><strong>阅读笔记图标</strong>：为当前文章或回答生成短报告，记录 archetype、oneliner、impression、depth、relevance 和标签；报告可保存、复看、导出。</li>
-            <li><strong>分享图标</strong>：导出当前文章或回答的纯净分享稿，支持 HTML、SVG、PNG 长图。PNG 为稳定下载会忽略正文图片，并在导出结果中标注。</li>
+            <li><strong>分享图标</strong>：导出当前文章或回答的纯净分享稿，支持 HTML、SVG、PNG 和 WebP 长图。PNG/WebP 为稳定下载会忽略正文图片，并在导出结果中标注。</li>
         </ul>
 
         <h3 style="margin:0 0 8px; color:var(--zh-accent);">首页与 Wiki</h3>
