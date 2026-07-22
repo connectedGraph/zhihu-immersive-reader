@@ -6,7 +6,7 @@
 
 适配页面：知乎首页推荐流(zhihu.com)、关注动态页 (`/follow`)、问答页 (`/question/`)、专栏文章页 (`/p/`)。
 
-[![Demo](https://img.shields.io/badge/演示-脚本演示-FF69B4?style=for-the-badge&logo=youtube&logoColor=white)](https://zhuanlan.zhihu.com/p/2039743943340991262)
+[![Demo](https://img.shields.io/badge/演示-脚本演示-FF69B4?style=for-the-badge&logo=youtube&logoColor=white)](https://www.zhihu.com/question/2044878223763403729/answer/2046792684585608809)
 [![Landing Page](https://img.shields.io/badge/官网-Landing%20页-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://6767.chat/zhihu-immersive-reader/)
 [![Greasy Fork](https://img.shields.io/badge/Greasy%20Fork-安装脚本-4BBA64?style=for-the-badge&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/573678)
 [![License](https://img.shields.io/badge/license-MIT-007EC6?style=for-the-badge)](LICENSE)
