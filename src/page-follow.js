@@ -9,6 +9,8 @@
         return `${location.origin}/follow::moments`;
     }
 
+    let _followFeedManager = null;
+
     function getFollowInitialApiUrl(limit = FOLLOW_BATCH_SIZE) {
         const url = new URL('/api/v3/moments', location.origin);
         url.searchParams.set('limit', String(limit));
@@ -184,8 +186,9 @@
     function persistFollowFeedCache() {
         syncFollowItemsFromGroups();
         _followFeedCache.set(getFollowCacheKey(), {
-            schemaVersion: 3,
+            schemaVersion: 4,
             groups: _followState.groups,
+            prefetchedGroups: normalizeFollowGroups(_followState.prefetchedGroups || []),
             currentGroupIndex: _followState.currentGroupIndex || 0,
             currentIndexInGroup: _followState.currentIndexInGroup || 0,
             listScrollY: _followState.listScrollY || 0,
@@ -199,6 +202,23 @@
         return new Set(syncFollowItemsFromGroups().map(item => item.key).filter(Boolean));
     }
 
+    function getFollowFeedManager() {
+        if (_followFeedManager?.state === _followState) return _followFeedManager;
+        _followFeedManager = createFeedPrefetchManager({
+            getState: () => _followState,
+            batchSize: FOLLOW_BATCH_SIZE,
+            normalizeGroups: normalizeFollowGroups,
+            getVisibleKeys: getFollowExistingKeys,
+            persist: persistFollowFeedCache,
+            fetchBatch: (batchSize, existingKeys) => collectFollowMoments(null, batchSize, {
+                existingKeys,
+                label: '后台预取关注动态',
+                maxPages: Math.max(4, Math.ceil(batchSize / FOLLOW_BATCH_SIZE) + 4)
+            })
+        });
+        return _followFeedManager;
+    }
+
     function setFollowGroup(groupIndex) {
         syncFollowItemsFromGroups();
         if (!_followState.groups.length) return;
@@ -210,15 +230,15 @@
     }
 
     async function loadNextFollowGroup(statusEl = null, options = {}) {
-        if (_followState.loadingMore || _followState.exhausted) return [];
+        if (_followState.loadingMore) return [];
         _followState.loadingMore = true;
-        const batchSize = options.batchSize || FOLLOW_BATCH_SIZE;
         try {
-            const batch = await collectFollowMoments(statusEl, batchSize, {
-                existingKeys: getFollowExistingKeys(),
-                label: options.label || '加载下一组关注动态'
-            });
-            if (!batch.length) { _followState.exhausted = true; persistFollowFeedCache(); return []; }
+            const manager = getFollowFeedManager();
+            if (statusEl && manager.bufferedCount() === 0 && manager.hasNext()) {
+                statusEl.textContent = '三组预载内容已用完，正在等待网络...';
+            }
+            const batch = await manager.takeNext();
+            if (!batch.length) { persistFollowFeedCache(); return []; }
             _followState.groups = normalizeFollowGroups(_followState.groups.concat([batch]));
             if (options.switchToNewGroup !== false) {
                 _followState.currentGroupIndex = _followState.groups.length - 1;
@@ -299,23 +319,9 @@
         crossOriginSet('zh-follow-layout', layout);
     }
 
-    async function refreshFollowAfterScroll(sentinel, controller) {
-        if (_followState.loadingMore || _followState.exhausted || !sentinel.isConnected) return;
-        sentinel.classList.add('is-loading');
-        sentinel.textContent = '正在加载更多动态...';
-        try {
-            const batch = await loadNextFollowGroup(sentinel, { switchToNewGroup: false, label: '连续加载关注动态' });
-            if (batch.length) renderFollowList({ focusLatestBatch: true });
-            else {
-                disconnectFeedScrollController();
-                sentinel.classList.remove('is-loading');
-                sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
-            }
-        } catch (error) {
-            sentinel.classList.remove('is-loading');
-            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
-            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
-        }
+    async function refreshFollowAfterScroll(sentinel, controller, status) {
+        if (_followState.loadingMore || !sentinel.isConnected) return [];
+        return loadNextFollowGroup(status, { switchToNewGroup: false, label: '连续加载关注动态' });
     }
 
     function prepareFollowScrollRefresh(wrapper) {
@@ -323,19 +329,36 @@
         if (config.homeFeedMode !== 'scroll') return;
         const sentinel = wrapper.querySelector('#zh-follow-scroll-sentinel') || document.createElement('div');
         sentinel.id = 'zh-follow-scroll-sentinel';
-        sentinel.className = 'zh-home-scroll-status';
-        if (_followState.exhausted) {
+        const manager = getFollowFeedManager();
+        sentinel.className = 'zh-feed-load-gate';
+        if (!manager.hasNext()) {
             sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+            sentinel.classList.add('is-exhausted');
             if (!sentinel.isConnected) wrapper.appendChild(sentinel);
             return;
         }
-        sentinel.textContent = '';
         if (!sentinel.isConnected) wrapper.appendChild(sentinel);
         return () => {
             if (_followState.collecting || !sentinel.isConnected) return null;
             return setupFeedScrollController({
                 sentinel,
-                onRefresh: controller => refreshFollowAfterScroll(sentinel, controller)
+                hasNext: () => getFollowFeedManager().hasNext(),
+                labels: {
+                    loading: '正在切换下一组动态...',
+                    error: '网络未跟上，继续向下滚动重试'
+                },
+                onLoadNext: (controller, status) => refreshFollowAfterScroll(sentinel, controller, status),
+                onCommit: batch => {
+                    if (batch?.length) {
+                        renderFollowList({ focusLatestBatch: true, smoothFocus: true });
+                        return true;
+                    }
+                    sentinel.classList.remove('is-loading');
+                    sentinel.classList.add('is-exhausted');
+                    sentinel.textContent = `已加载全部 ${syncFollowItemsFromGroups().length} 条动态`;
+                    disconnectFeedScrollController();
+                    return false;
+                }
             });
         };
     }
@@ -366,7 +389,7 @@
             indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
             toolbar.appendChild(indicator);
             toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setFollowGroup(groupIndex + 1)));
-            if (!_followState.exhausted) {
+            if (getFollowFeedManager().hasNext()) {
                 toolbar.appendChild(makeBtn('加载更多', '+', _followState.loadingMore, () => loadMoreFollowAndRender()));
             }
         }
@@ -445,7 +468,7 @@
         entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
             if (scrollMode && indexInGroup === 0 && groupIndex > 0) {
                 const divider = document.createElement('div');
-                divider.className = 'zh-feed-batch-divider';
+                divider.className = 'zh-feed-batch-divider zh-feed-batch-anchor';
                 const createdTimestamp = Number(itemRecord.createdTime);
                 const batchDate = Number.isFinite(createdTimestamp) && createdTimestamp > 0
                     ? new Date(createdTimestamp > 1e12 ? createdTimestamp : createdTimestamp * 1000).toLocaleDateString()
@@ -455,6 +478,9 @@
             }
             const moment = document.createElement('div');
             moment.className = 'zh-moment';
+            if (groupIndex === 0 && indexInGroup === 0 && scrollMode) {
+                moment.classList.add('zh-feed-batch-anchor');
+            }
             moment.appendChild(buildMomentActionLine(itemRecord));
 
             const card = document.createElement('div');
@@ -484,7 +510,8 @@
             ? getFeedAnchorScrollTop(latestDivider)
             : (options.restoreScroll ? _followState.listScrollY : options.preserveScroll ? previousScrollY : null);
         const positionList = () => {
-            window.scrollTo(0, options.focusLatestBatch || options.restoreScroll || options.preserveScroll ? targetScrollY || 0 : 0);
+            const top = options.focusLatestBatch || options.restoreScroll || options.preserveScroll ? targetScrollY || 0 : 0;
+            window.scrollTo(options.smoothFocus ? { top, behavior: 'smooth' } : { top, behavior: 'auto' });
             if (options.startScrollRefresh !== false) {
                 requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
             }
@@ -622,8 +649,11 @@
     // 载入 follow 数据到 _followState（缓存优先），返回是否有内容
     async function ensureFollowDataLoaded(status) {
         const cached = _followFeedCache.get(getFollowCacheKey());
-        if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
+        if ([3, 4].includes(cached?.schemaVersion) && Array.isArray(cached.groups) && cached.groups.length) {
             _followState.groups = normalizeFollowGroups(cached.groups);
+            _followState.prefetchedGroups = cached.schemaVersion === 4
+                ? normalizeFollowGroups(cached.prefetchedGroups || [])
+                : [];
             syncFollowItemsFromGroups();
             _followState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _followState.groups.length - 1));
             _followState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_followState.groups[_followState.currentGroupIndex]?.length || 1) - 1));
@@ -654,7 +684,11 @@
         if (!document.getElementById('immersive-wrapper')) { location.href = location.origin + '/follow'; return; }
         if (_homeState.view === 'list') _homeState.listScrollY = window.scrollY;
         // 已有数据：直接就地渲染，不弹遮罩、不停顿，保证来回切换丝滑
-        if (_followState.groups?.length) { renderFollowList(); return; }
+        if (_followState.groups?.length) {
+            renderFollowList();
+            void getFollowFeedManager().ensureBuffered();
+            return;
+        }
         _followState.collecting = true;
         const status = showCollectOverlay('正在通过 API 加载关注动态...');
         try {
@@ -664,6 +698,7 @@
             const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
             _followState.collecting = false;
             startScrollRefresh?.();
+            void getFollowFeedManager().ensureBuffered();
         } catch (err) {
             removeCollectOverlay();
             alert(`切换关注动态失败：${err.message}`);
@@ -710,6 +745,7 @@
             const startScrollRefresh = renderFollowList({ startScrollRefresh: false });
             _followState.collecting = false;
             startScrollRefresh?.();
+            void getFollowFeedManager().ensureBuffered();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;

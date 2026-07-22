@@ -1,238 +1,8 @@
-    let _feedScrollController = null;
-
     function getHomeFeedMode() {
         return config.homeFeedMode === 'scroll' ? 'scroll' : 'paged';
     }
 
-    function disconnectFeedScrollController() {
-        const controller = _feedScrollController;
-        if (!controller) return;
-        controller.destroy();
-        if (_feedScrollController === controller) _feedScrollController = null;
-    }
-
-    function setupFeedScrollController({ sentinel, onRefresh }) {
-        if (!sentinel?.isConnected || typeof onRefresh !== 'function') return null;
-        disconnectFeedScrollController();
-
-        const progress = document.createElement('div');
-        progress.className = 'zh-feed-scroll-progress';
-        progress.setAttribute('role', 'progressbar');
-        progress.setAttribute('aria-label', '下一批内容加载进度');
-        progress.setAttribute('aria-valuemin', '0');
-        progress.setAttribute('aria-valuemax', '100');
-        progress.setAttribute('aria-valuenow', '0');
-
-        const progressBar = document.createElement('div');
-        progressBar.className = 'zh-feed-scroll-progress-bar';
-        const progressValue = document.createElement('span');
-        progressValue.className = 'zh-feed-scroll-progress-value';
-        progressValue.textContent = '0%';
-        progress.appendChild(progressBar);
-        progress.appendChild(progressValue);
-        document.body.appendChild(progress);
-
-        const controller = {
-            destroyed: false,
-            armed: false,
-            atEnd: false,
-            loading: false,
-            distance: 0,
-            displayedRatio: 0,
-            threshold: Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0),
-            lastScrollY: Math.max(0, window.scrollY || 0),
-            lastTouchY: null,
-            lastFrameTime: null,
-            armTimer: null,
-            readyTimer: null,
-            frameId: null,
-            progress,
-            requestRefresh: null,
-            retry: null,
-            destroy: null
-        };
-
-        const isAtDocumentEnd = () => {
-            const root = document.documentElement;
-            const body = document.body;
-            const viewportHeight = window.innerHeight || root.clientHeight || 0;
-            const documentHeight = Math.max(root.scrollHeight, body?.scrollHeight || 0);
-            return (window.scrollY || 0) + viewportHeight >= documentHeight - 8;
-        };
-
-        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-        const cancelReadyRefresh = () => {
-            if (controller.readyTimer === null) return;
-            clearTimeout(controller.readyTimer);
-            controller.readyTimer = null;
-        };
-
-        const renderProgress = timestamp => {
-            controller.frameId = null;
-            if (controller.destroyed) return;
-            const targetRatio = Math.max(0, Math.min(1, controller.distance / controller.threshold));
-            const elapsed = controller.lastFrameTime === null ? 16 : Math.min(64, Math.max(0, timestamp - controller.lastFrameTime));
-            controller.lastFrameTime = timestamp;
-            if (prefersReducedMotion) {
-                controller.displayedRatio = targetRatio;
-            } else {
-                const follow = 1 - Math.exp(-elapsed / 85);
-                controller.displayedRatio += (targetRatio - controller.displayedRatio) * follow;
-                if (Math.abs(targetRatio - controller.displayedRatio) < 0.001) controller.displayedRatio = targetRatio;
-            }
-
-            const percent = Math.round(controller.displayedRatio * 100);
-            const isReady = targetRatio >= 1 && controller.displayedRatio >= 0.995;
-            progressBar.style.setProperty('--zh-feed-progress-angle', `${controller.displayedRatio * 360}deg`);
-            progressValue.textContent = controller.loading ? '...' : controller.atEnd ? `${percent}%` : '↓';
-            progress.setAttribute('aria-valuenow', String(percent));
-            progress.setAttribute('aria-valuetext', controller.atEnd ? `下一批加载进度 ${percent}%` : '滚动到列表底部后开始累计');
-            progress.classList.toggle('is-at-end', controller.atEnd);
-            progress.classList.toggle('is-ready', isReady);
-
-            if (isReady && !controller.loading && controller.readyTimer === null) {
-                controller.readyTimer = setTimeout(() => {
-                    controller.readyTimer = null;
-                    if (controller.atEnd && controller.distance >= controller.threshold) requestRefresh(false);
-                }, prefersReducedMotion ? 0 : 140);
-            } else if (!isReady) {
-                cancelReadyRefresh();
-            }
-
-            if (Math.abs(targetRatio - controller.displayedRatio) >= 0.001) scheduleProgressRender();
-        };
-
-        const scheduleProgressRender = () => {
-            if (controller.frameId === null) controller.frameId = requestAnimationFrame(renderProgress);
-        };
-
-        const scheduleArm = (delay = 120) => {
-            clearTimeout(controller.armTimer);
-            controller.armed = false;
-            controller.armTimer = setTimeout(() => {
-                if (controller.destroyed) return;
-                controller.lastScrollY = Math.max(0, window.scrollY || 0);
-                controller.armed = true;
-            }, delay);
-        };
-
-        const requestRefresh = async force => {
-            if (controller.destroyed || controller.loading || !sentinel.isConnected) return;
-            if (!force && (!controller.armed || controller.distance < controller.threshold)) return;
-            cancelReadyRefresh();
-            controller.loading = true;
-            controller.armed = false;
-            progress.classList.add('is-loading');
-            progressValue.textContent = '...';
-            try {
-                await onRefresh(controller);
-            } finally {
-                if (!controller.destroyed) {
-                    controller.loading = false;
-                    controller.distance = 0;
-                    progress.classList.remove('is-loading', 'is-ready');
-                    scheduleProgressRender();
-                    scheduleArm();
-                }
-            }
-        };
-
-        const recordDistance = delta => {
-            if (!controller.armed || !controller.atEnd || controller.loading || !Number.isFinite(delta) || delta <= 0) return;
-            controller.distance = Math.min(controller.threshold, controller.distance + delta);
-            scheduleProgressRender();
-        };
-
-        const resetProgress = () => {
-            if (controller.distance === 0) return;
-            controller.distance = 0;
-            scheduleProgressRender();
-        };
-
-        const updateEndState = () => {
-            const nextAtEnd = isAtDocumentEnd();
-            if (!nextAtEnd) resetProgress();
-            if (controller.atEnd !== nextAtEnd) {
-                controller.atEnd = nextAtEnd;
-                scheduleProgressRender();
-            }
-        };
-
-        const onScroll = () => {
-            const scrollY = Math.max(0, window.scrollY || 0);
-            controller.lastScrollY = scrollY;
-            if (!controller.armed) { scheduleArm(); return; }
-            updateEndState();
-        };
-
-        const onWheel = event => {
-            if (!controller.armed || controller.loading) return;
-            updateEndState();
-            if (!controller.atEnd) return;
-            if (event.deltaY < 0) { resetProgress(); return; }
-            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (window.innerHeight || 1) : 1;
-            recordDistance(event.deltaY * unit);
-        };
-
-        const onTouchStart = event => {
-            controller.lastTouchY = event.touches[0]?.clientY ?? null;
-            updateEndState();
-        };
-
-        const onTouchMove = event => {
-            const touchY = event.touches[0]?.clientY;
-            if (!Number.isFinite(touchY) || !Number.isFinite(controller.lastTouchY)) return;
-            const delta = controller.lastTouchY - touchY;
-            controller.lastTouchY = touchY;
-            updateEndState();
-            if (!controller.atEnd) return;
-            if (delta < 0) { resetProgress(); return; }
-            recordDistance(delta);
-        };
-
-        const onResize = () => {
-            const previousThreshold = controller.threshold;
-            controller.threshold = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 0);
-            controller.distance = Math.min(controller.threshold, controller.distance * controller.threshold / previousThreshold);
-            updateEndState();
-            scheduleProgressRender();
-        };
-
-        controller.requestRefresh = requestRefresh;
-        controller.retry = () => requestRefresh(true);
-        controller.destroy = () => {
-            if (controller.destroyed) return;
-            controller.destroyed = true;
-            clearTimeout(controller.armTimer);
-            cancelReadyRefresh();
-            if (controller.frameId !== null) cancelAnimationFrame(controller.frameId);
-            window.removeEventListener('scroll', onScroll);
-            window.removeEventListener('wheel', onWheel);
-            window.removeEventListener('touchstart', onTouchStart);
-            window.removeEventListener('touchmove', onTouchMove);
-            window.removeEventListener('resize', onResize);
-            progress.remove();
-        };
-
-        window.addEventListener('scroll', onScroll, { passive: true });
-        window.addEventListener('wheel', onWheel, { passive: true });
-        window.addEventListener('touchstart', onTouchStart, { passive: true });
-        window.addEventListener('touchmove', onTouchMove, { passive: true });
-        window.addEventListener('resize', onResize, { passive: true });
-        _feedScrollController = controller;
-        updateEndState();
-        scheduleArm();
-        return controller;
-    }
-
-    function getFeedAnchorScrollTop(element) {
-        if (!element) return 0;
-        if (typeof element.getBoundingClientRect === 'function') {
-            return Math.max(0, Math.round(element.getBoundingClientRect().top + window.scrollY - 12));
-        }
-        return Math.max(0, Number(element.offsetTop) || 0);
-    }
+    let _homeFeedManager = null;
 
     function getHomeCacheKey() {
         return `${location.origin}${location.pathname}::topstory`;
@@ -572,9 +342,9 @@
     function updateHomeCollectStatus(statusEl, message) {
         if (statusEl?.id === 'zh-wiki-progress' && wikiState.running) {
             updateWikiProgress(message, 'collect');
-        } else {
-            if (statusEl) statusEl.textContent = message;
-            if (!statusEl?.classList?.contains('zh-home-scroll-status')) showCollectOverlay(message);
+        } else if (statusEl) {
+            statusEl.textContent = message;
+            if (!statusEl.classList?.contains('zh-feed-load-gate')) showCollectOverlay(message);
         }
     }
 
@@ -688,8 +458,9 @@
     function persistHomeFeedCache() {
         syncHomeItemsFromGroups();
         _homeFeedCache.set(getHomeCacheKey(), {
-            schemaVersion: 3,
+            schemaVersion: 4,
             groups: _homeState.groups,
+            prefetchedGroups: normalizeHomeGroups(_homeState.prefetchedGroups || []),
             items: _homeState.items,
             currentIndex: _homeState.currentIndex || 0,
             currentGroupIndex: _homeState.currentGroupIndex || 0,
@@ -706,6 +477,23 @@
         return new Set(syncHomeItemsFromGroups().map(item => item.key).filter(Boolean));
     }
 
+    function getHomeFeedManager() {
+        if (_homeFeedManager?.state === _homeState) return _homeFeedManager;
+        _homeFeedManager = createFeedPrefetchManager({
+            getState: () => _homeState,
+            batchSize: HOME_BATCH_SIZE,
+            normalizeGroups: normalizeHomeGroups,
+            getVisibleKeys: getHomeExistingKeys,
+            persist: persistHomeFeedCache,
+            fetchBatch: (batchSize, existingKeys) => collectHomeFeedItemsFromApi(null, batchSize, {
+                existingKeys,
+                label: '后台预取首页推荐',
+                maxPages: Math.max(4, Math.ceil(batchSize / HOME_BATCH_SIZE) + 4)
+            })
+        });
+        return _homeFeedManager;
+    }
+
     function setHomeGroup(groupIndex) {
         syncHomeItemsFromGroups();
         if (!_homeState.groups.length) return;
@@ -717,20 +505,18 @@
     }
 
     async function loadNextHomeGroup(statusEl = null, options = {}) {
-        if (_homeState.loadingMore || _homeState.exhausted) return [];
+        if (_homeState.loadingMore) return [];
         _homeState.loadingMore = true;
-        const batchSize = options.batchSize || HOME_BATCH_SIZE;
         const switchToNewGroup = options.switchToNewGroup !== false;
         const previousGroupIndex = _homeState.currentGroupIndex || 0;
 
         try {
-            const batch = await collectHomeFeedItemsFromApi(statusEl, batchSize, {
-                existingKeys: getHomeExistingKeys(),
-                label: options.label || '手动加载下一组首页推荐',
-                maxPages: options.maxPages || Math.max(4, Math.ceil(batchSize / HOME_BATCH_SIZE) + 4)
-            });
+            const manager = getHomeFeedManager();
+            if (statusEl && manager.bufferedCount() === 0 && manager.hasNext()) {
+                statusEl.textContent = '三组预载内容已用完，正在等待网络...';
+            }
+            const batch = await manager.takeNext();
             if (!batch.length) {
-                _homeState.exhausted = true;
                 persistHomeFeedCache();
                 return [];
             }
@@ -820,7 +606,7 @@
             indicator.textContent = `${groups.length ? groupIndex + 1 : 0} / ${groups.length}`;
             toolbar.appendChild(indicator);
             toolbar.appendChild(makeBtn('下一组', '›', groupIndex >= groups.length - 1, () => setHomeGroup(groupIndex + 1)));
-            if (!_homeState.exhausted) {
+            if (getHomeFeedManager().hasNext()) {
                 toolbar.appendChild(makeBtn('加载更多', '+', _homeState.loadingMore, () => loadMoreHomeAndRender()));
             }
         }
@@ -841,27 +627,12 @@
         wrapper.appendChild(toolbar);
     }
 
-    async function refreshHomeAfterScroll(sentinel, controller) {
-        if (_homeState.loadingMore || _homeState.exhausted || !sentinel.isConnected) return;
-        sentinel.classList.add('is-loading');
-        sentinel.textContent = '正在加载更多推荐...';
-        try {
-            const batch = await loadNextHomeGroup(sentinel, {
-                switchToNewGroup: false,
-                label: '连续加载首页推荐'
-            });
-            if (batch.length) {
-                renderHomeList({ focusLatestBatch: true });
-            } else {
-                disconnectFeedScrollController();
-                sentinel.classList.remove('is-loading');
-                sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
-            }
-        } catch (error) {
-            sentinel.classList.remove('is-loading');
-            sentinel.innerHTML = '<span>加载失败</span><button type="button" class="zh-home-scroll-retry">重试</button>';
-            sentinel.querySelector('.zh-home-scroll-retry')?.addEventListener('click', controller.retry, { once: true });
-        }
+    async function refreshHomeAfterScroll(sentinel, controller, status) {
+        if (_homeState.loadingMore || !sentinel.isConnected) return [];
+        return loadNextHomeGroup(status, {
+            switchToNewGroup: false,
+            label: '连续加载首页推荐'
+        });
     }
 
     function prepareHomeScrollRefresh(wrapper) {
@@ -870,13 +641,14 @@
 
         const sentinel = wrapper.querySelector('#zh-home-scroll-sentinel') || document.createElement('div');
         sentinel.id = 'zh-home-scroll-sentinel';
-        sentinel.className = 'zh-home-scroll-status';
-        if (_homeState.exhausted) {
+        sentinel.className = 'zh-feed-load-gate';
+        const manager = getHomeFeedManager();
+        if (!manager.hasNext()) {
             sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+            sentinel.className = 'zh-feed-load-gate is-exhausted';
             if (!sentinel.isConnected) wrapper.appendChild(sentinel);
             return;
         }
-        sentinel.textContent = '';
         sentinel.setAttribute('aria-label', '继续加载首页推荐');
         if (!sentinel.isConnected) wrapper.appendChild(sentinel);
 
@@ -884,7 +656,23 @@
             if (_homeState.collecting || !sentinel.isConnected) return null;
             return setupFeedScrollController({
                 sentinel,
-                onRefresh: controller => refreshHomeAfterScroll(sentinel, controller)
+                hasNext: () => getHomeFeedManager().hasNext(),
+                labels: {
+                    loading: '正在切换下一组推荐...',
+                    error: '网络未跟上，继续向下滚动重试'
+                },
+                onLoadNext: (controller, status) => refreshHomeAfterScroll(sentinel, controller, status),
+                onCommit: batch => {
+                    if (batch?.length) {
+                        renderHomeList({ focusLatestBatch: true, smoothFocus: true });
+                        return true;
+                    }
+                    sentinel.classList.remove('is-loading');
+                    sentinel.classList.add('is-exhausted');
+                    sentinel.textContent = `已加载全部 ${syncHomeItemsFromGroups().length} 条推荐`;
+                    disconnectFeedScrollController();
+                    return false;
+                }
             });
         };
     }
@@ -919,12 +707,15 @@
         entries.forEach(({ itemRecord, groupIndex, indexInGroup }) => {
             if (getHomeFeedMode() === 'scroll' && indexInGroup === 0 && groupIndex > 0) {
                 const divider = document.createElement('div');
-                divider.className = 'zh-feed-batch-divider';
+                divider.className = 'zh-feed-batch-divider zh-feed-batch-anchor';
                 divider.innerHTML = `<span>第 ${groupIndex + 1} 批 · 6 条推荐</span>`;
                 grid.appendChild(divider);
             }
             const card = document.createElement('div');
             card.className = 'zh-home-card';
+            if (groupIndex === 0 && indexInGroup === 0 && getHomeFeedMode() === 'scroll') {
+                card.classList.add('zh-feed-batch-anchor');
+            }
 
             const title = document.createElement('div');
             title.className = 'zh-home-card-title';
@@ -981,9 +772,10 @@
             ? getFeedAnchorScrollTop(latestDivider)
             : options.scrollY ?? (options.restoreScroll ? _homeState.listScrollY : options.preserveScroll ? previousScrollY : null);
         const positionList = () => {
-            window.scrollTo(0, options.focusLatestBatch || options.preserveScroll || options.restoreScroll
+            const top = options.focusLatestBatch || options.preserveScroll || options.restoreScroll
                 ? Math.max(0, Number(targetScrollY) || 0)
-                : 0);
+                : 0;
+            window.scrollTo(options.smoothFocus ? { top, behavior: 'smooth' } : { top, behavior: 'auto' });
             if (options.startScrollRefresh !== false) {
                 requestAnimationFrame(() => requestAnimationFrame(() => activateScrollRefresh?.()));
             }
@@ -1253,8 +1045,11 @@
 
             const cacheKey = getHomeCacheKey();
             const cached = _homeFeedCache.get(cacheKey);
-            if (cached?.schemaVersion === 3 && Array.isArray(cached.groups) && cached.groups.length) {
+            if ([3, 4].includes(cached?.schemaVersion) && Array.isArray(cached.groups) && cached.groups.length) {
                 _homeState.groups = normalizeHomeGroups(cached.groups);
+                _homeState.prefetchedGroups = cached.schemaVersion === 4
+                    ? normalizeHomeGroups(cached.prefetchedGroups || [])
+                    : [];
                 syncHomeItemsFromGroups();
                 _homeState.currentGroupIndex = Math.max(0, Math.min(cached.currentGroupIndex || 0, _homeState.groups.length - 1));
                 _homeState.currentIndexInGroup = Math.max(0, Math.min(cached.currentIndexInGroup || 0, (_homeState.groups[_homeState.currentGroupIndex]?.length || 1) - 1));
@@ -1296,6 +1091,7 @@
             const startScrollRefresh = renderHomeList({ startScrollRefresh: false });
             _homeState.collecting = false;
             startScrollRefresh?.();
+            void getHomeFeedManager().ensureBuffered();
         } catch (err) {
             removeCollectOverlay();
             window._isImmersive = false;

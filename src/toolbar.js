@@ -320,6 +320,9 @@ function enterImmersive() {
             view: '',
             collecting: false,
             loadingMore: false,
+            prefetchedGroups: [],
+            prefetching: false,
+            prefetchError: '',
             exhausted: false,
             apiNextUrl: '',
             apiStarted: false
