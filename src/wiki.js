@@ -965,7 +965,7 @@
         const maxItems = Math.max(1, getWikiLimit('wikiMaxItems', 100, runConfig));
         syncHomeItemsFromGroups();
 
-        while (_homeState.items.length < maxItems && !_homeState.exhausted) {
+        while (_homeState.items.length < maxItems && getHomeFeedManager().hasNext()) {
             const batch = await loadNextHomeGroup(statusEl, {
                 switchToNewGroup: false,
                 label: 'Wiki API 补充首页推荐',
