@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.1.2
+// @version      5.1.3
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -40,11 +40,10 @@
 
 // ----- 主题样式变量（CSS自定义属性） -----
 const THEMES = [
-    { name: '📜 宣纸', vars: { '--zh-bg': '#E5DEC9', '--zh-paper': '#F8F4E6', '--zh-text': '#2b2b2b', '--zh-title': '#1a1a1a', '--zh-accent': '#8B2626', '--zh-border': '#d4cbb8', '--zh-quote': '#f0ebe1', '--zh-code': '#eae5d9', '--zh-modal-bg': '#F8F4E6' } },
-    { name: '🎋 竹简', vars: { '--zh-bg': '#D6E4D0', '--zh-paper': '#EDF5EA', '--zh-text': '#2C3E2E', '--zh-title': '#1B2A1E', '--zh-accent': '#3D7A4A', '--zh-border': '#B3CCAF', '--zh-quote': '#DDE9DA', '--zh-code': '#D4E2D0', '--zh-modal-bg': '#EDF5EA' } },
-    { name: '🧳 牛皮', vars: { '--zh-bg': '#D4C4A8', '--zh-paper': '#F5EBDA', '--zh-text': '#3D2E1C', '--zh-title': '#2A1A08', '--zh-accent': '#8B5E34', '--zh-border': '#C9B896', '--zh-quote': '#EDE3D1', '--zh-code': '#E8DCCA', '--zh-modal-bg': '#F5EBDA' } },
-    { name: '🧛 暗血', vars: { '--zh-bg': '#0F0F0F', '--zh-paper': '#1A1A1A', '--zh-text': '#C8C8C8', '--zh-title': '#E0E0E0', '--zh-accent': '#C0392B', '--zh-border': '#2E2E2E', '--zh-quote': '#222222', '--zh-code': '#161616', '--zh-modal-bg': '#242424' } },
-    { name: '⚪ 简白', vars: { '--zh-bg': '#F5F5F5', '--zh-paper': '#FFFFFF', '--zh-text': '#333333', '--zh-title': '#000000', '--zh-accent': '#0066CC', '--zh-border': '#E0E0E0', '--zh-quote': '#F8F8F8', '--zh-code': '#F5F5F5', '--zh-modal-bg': '#FFFFFF' } }
+    { name: '宣纸', vars: { '--zh-bg': '#E5DEC9', '--zh-paper': '#F8F4E6', '--zh-text': '#2b2b2b', '--zh-title': '#1a1a1a', '--zh-accent': '#8B2626', '--zh-border': '#d4cbb8', '--zh-quote': '#f0ebe1', '--zh-code': '#eae5d9', '--zh-modal-bg': '#F8F4E6' } },
+    { name: '蓝白', vars: { '--zh-bg': '#D8E1E8', '--zh-paper': '#E8EEF3', '--zh-text': '#2E3A44', '--zh-title': '#111820', '--zh-accent': '#246B9F', '--zh-border': '#B4C3CF', '--zh-quote': '#DEE7ED', '--zh-code': '#D8E2E9', '--zh-modal-bg': '#E6EDF2' } },
+    { name: '吸血鬼', vars: { '--zh-bg': '#171315', '--zh-paper': '#211B1E', '--zh-text': '#C9BEC1', '--zh-title': '#E3D8DB', '--zh-accent': '#C47274', '--zh-border': '#3B2D32', '--zh-quote': '#2A2225', '--zh-code': '#1C1719', '--zh-modal-bg': '#261F22' } },
+    { name: '暗蓝', vars: { '--zh-bg': '#101820', '--zh-paper': '#18242E', '--zh-text': '#B9C7D2', '--zh-title': '#DDE7EE', '--zh-accent': '#5B97BF', '--zh-border': '#2D4150', '--zh-quote': '#1E2D38', '--zh-code': '#13202A', '--zh-modal-bg': '#1A2832' } }
 ];
 
 // 自定义主题：localStorage 键 + 各 CSS 变量对应 UI 部位的中文指引
@@ -309,18 +308,20 @@ const STYLE_CSS = `
     .zh-home-scroll-count { min-height: 32px; display: inline-flex; align-items: center; }
     html.zh-feed-scroll-snap { scroll-snap-type: y proximity; scroll-padding-top: 12px; }
     .zh-feed-batch-anchor { scroll-snap-align: start; scroll-snap-stop: normal; }
-    .zh-feed-load-gate { --zh-feed-pull-ratio: 0; height: 0; margin: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--zh-text); opacity: .62; font-size: 12px; line-height: 1.4; transition: height .24s cubic-bezier(.2,.75,.25,1), opacity .18s ease; }
+    .zh-feed-load-gate { --zh-feed-pull-ratio: 0; --zh-feed-progress-angle: 0deg; height: 0; margin: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--zh-text); opacity: .62; font-size: 12px; line-height: 1.4; transition: height .24s cubic-bezier(.2,.75,.25,1), opacity .18s ease; }
     .zh-feed-load-gate.is-pulling, .zh-feed-load-gate.is-loading, .zh-feed-load-gate.is-error { margin-top: 8px; }
-    .zh-feed-load-indicator { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: var(--zh-accent); }
-    .zh-feed-load-arrow { transform: translateY(-2px); opacity: .78; font-size: 18px; line-height: 1; transition: transform .16s ease, opacity .16s ease; }
-    .zh-feed-load-gate.is-pulling .zh-feed-load-arrow { transform: translateY(1px); opacity: 1; }
+    .zh-feed-load-indicator { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; color: var(--zh-accent); }
+    .zh-feed-load-ring { position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--zh-accent) 0deg var(--zh-feed-progress-angle), color-mix(in srgb, var(--zh-border) 68%, transparent) var(--zh-feed-progress-angle) 360deg); transform: scale(.94); transition: transform .18s cubic-bezier(.2,.75,.25,1); }
+    .zh-feed-load-ring::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--zh-paper); }
+    .zh-feed-load-value { position: relative; z-index: 1; min-width: 24px; color: var(--zh-text); opacity: .72; font-size: 8px; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+    .zh-feed-load-gate.is-pulling .zh-feed-load-ring { transform: scale(1); }
     .zh-feed-load-gate.is-loading { height: 104px !important; opacity: .82; }
-    .zh-feed-load-gate.is-loading .zh-feed-load-indicator { border: 2px solid color-mix(in srgb, var(--zh-border) 76%, transparent); border-top-color: var(--zh-accent); border-radius: 50%; animation: zh-feed-load-spin .72s linear infinite; }
-    .zh-feed-load-gate.is-loading .zh-feed-load-arrow { opacity: 0; }
+    .zh-feed-load-gate.is-loading .zh-feed-load-ring { background: conic-gradient(var(--zh-accent) 0deg 92deg, color-mix(in srgb, var(--zh-border) 45%, transparent) 92deg 360deg); animation: zh-feed-load-spin .72s linear infinite; }
+    .zh-feed-load-gate.is-loading .zh-feed-load-value { opacity: 0; }
     .zh-feed-load-gate.is-error { opacity: .68; }
     .zh-feed-load-gate.is-exhausted { height: auto !important; min-height: 42px; margin-top: 12px; opacity: .5; }
     @keyframes zh-feed-load-spin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-indicator { animation-duration: 1.2s; } }
+    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate, .zh-feed-load-ring { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-ring { animation-duration: 1.2s; } }
     .zh-toread-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 6px; margin-left: auto; }
     .zh-toread-btn svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }
@@ -2981,6 +2982,51 @@ const HELP_MODAL_HTML = `
 // 模块: ui.js
 // ═══════════════════════════════════════════════════════════
     const THEME_STORAGE_KEY = 'zh-immersive-theme-index';
+    const THEME_STORAGE_VERSION_KEY = 'zh-immersive-theme-schema';
+    const THEME_STORAGE_VERSION = '3';
+
+    function readThemeStorage(key, fallback = null) {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const value = GM_getValue(key, null);
+                if (value !== null && value !== undefined) return value;
+            }
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : value;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function writeThemeStorage(key, value) {
+        try { localStorage.setItem(key, String(value)); } catch (e) {}
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, String(value)); } catch (e) {}
+    }
+
+    function normalizeStoredThemeIndex(raw) {
+        const index = parseInt(raw, 10);
+        if (!Number.isFinite(index) || index < 0) return 0;
+        const storedVersion = String(readThemeStorage(THEME_STORAGE_VERSION_KEY, ''));
+        if (storedVersion === THEME_STORAGE_VERSION) return index;
+
+        let migrated = 0;
+        if (storedVersion === '2') {
+            // v2: 宣纸、吸血鬼、蓝白；v3 inserts 暗蓝 after reordered built-ins.
+            const versionTwoMap = { 0: 0, 1: 2, 2: 1 };
+            migrated = Object.prototype.hasOwnProperty.call(versionTwoMap, index)
+                ? versionTwoMap[index]
+                : index >= 3 ? index + 1 : 0;
+        } else {
+            // Published legacy builds had five built-ins; retained themes were 宣纸 and 暗血.
+            const legacyMap = { 0: 0, 3: 2 };
+            migrated = Object.prototype.hasOwnProperty.call(legacyMap, index)
+                ? legacyMap[index]
+                : index >= 5 ? index - 1 : 0;
+        }
+        writeThemeStorage(THEME_STORAGE_VERSION_KEY, THEME_STORAGE_VERSION);
+        writeThemeStorage(THEME_STORAGE_KEY, migrated);
+        return migrated;
+    }
 
     // 启动时把用户自定义主题追加进 THEMES（mutate，不重新赋值 const）
     function loadCustomThemes() {
@@ -3010,15 +3056,40 @@ const HELP_MODAL_HTML = `
 
     // 容错解析主题对象：先严格 JSON，失败再把单引号/无引号 key normalize 后重试
     function parseThemeJSON(raw) {
-        const text = String(raw).trim().replace(/;$/, '');
-        try { return JSON.parse(text); } catch (e) {}
+        const text = String(raw).trim().replace(/;$/, '').replace(/^[A-Za-z_$][\w$-]*\s*:\s*(?=\{)/, '');
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch (e) {}
         try {
-            const normalized = text
-                .replace(/'/g, '"')
-                .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
-                .replace(/,\s*([}\]])/g, '$1');
-            return JSON.parse(normalized);
+            if (!parsed) {
+                const normalized = text
+                    .replace(/'/g, '"')
+                    .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
+                    .replace(/,\s*([}\]])/g, '$1');
+                parsed = JSON.parse(normalized);
+            }
         } catch (e) { return null; }
+        if (!parsed || typeof parsed !== 'object') return null;
+        // Accept the Codex theme envelope as well as the app's native name/vars shape.
+        if (!parsed.vars && parsed.theme && typeof parsed.theme === 'object') {
+            const theme = parsed.theme;
+            const surface = theme.surface || '#E8EEF3';
+            const ink = theme.ink || '#26313B';
+            parsed = {
+                name: parsed.codeThemeId ? `Codex ${parsed.codeThemeId}` : 'Codex 主题',
+                vars: {
+                    '--zh-bg': surface === '#ffffff' ? '#D8E1E8' : surface,
+                    '--zh-paper': surface,
+                    '--zh-text': ink,
+                    '--zh-title': ink,
+                    '--zh-accent': theme.accent || '#246B9F',
+                    '--zh-border': '#B4C3CF',
+                    '--zh-quote': '#DEE7ED',
+                    '--zh-code': '#D8E2E9',
+                    '--zh-modal-bg': surface
+                }
+            };
+        }
+        return parsed;
     }
 
     function removeCustomTheme(name) {
@@ -3029,15 +3100,9 @@ const HELP_MODAL_HTML = `
     }
 
     let currentThemeIndex = (() => {
-        try {
-            if (typeof GM_getValue === 'function') {
-                const gm = GM_getValue(THEME_STORAGE_KEY, null);
-                if (gm !== null) { const idx = parseInt(gm, 10); if (idx >= 0 && idx < THEMES.length) return idx; }
-            }
-            const saved = localStorage.getItem(THEME_STORAGE_KEY);
-            const idx = saved !== null ? parseInt(saved, 10) : 0;
-            return (idx >= 0 && idx < THEMES.length) ? idx : 0;
-        } catch (e) { return 0; }
+        const saved = readThemeStorage(THEME_STORAGE_KEY, '0');
+        const index = normalizeStoredThemeIndex(saved);
+        return (index >= 0 && index < THEMES.length) ? index : 0;
     })();
     function applyTheme(index) {
         const safeIndex = (index >= 0 && index < THEMES.length) ? index : 0;
@@ -3045,8 +3110,8 @@ const HELP_MODAL_HTML = `
         const theme = THEMES[safeIndex];
         const root = document.documentElement;
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
-        try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
-        try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        writeThemeStorage(THEME_STORAGE_KEY, safeIndex);
+        writeThemeStorage(THEME_STORAGE_VERSION_KEY, THEME_STORAGE_VERSION);
         applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：字体加载失败', err));
     }
 
@@ -6764,13 +6829,20 @@ ${page.xhtml}
         sentinel.innerHTML = '';
         sentinel.className = 'zh-feed-load-gate';
         sentinel.setAttribute('aria-live', 'polite');
+        sentinel.setAttribute('role', 'progressbar');
+        sentinel.setAttribute('aria-valuemin', '0');
+        sentinel.setAttribute('aria-valuemax', '100');
+        sentinel.setAttribute('aria-valuenow', '0');
         const indicator = document.createElement('span');
         indicator.className = 'zh-feed-load-indicator';
         indicator.setAttribute('aria-hidden', 'true');
-        const arrow = document.createElement('span');
-        arrow.className = 'zh-feed-load-arrow';
-        arrow.textContent = '↓';
-        indicator.appendChild(arrow);
+        const progressRing = document.createElement('span');
+        progressRing.className = 'zh-feed-load-ring';
+        const progressValue = document.createElement('span');
+        progressValue.className = 'zh-feed-load-value';
+        progressValue.textContent = '0%';
+        progressRing.appendChild(progressValue);
+        indicator.appendChild(progressRing);
         const status = document.createElement('span');
         status.className = 'zh-feed-load-label';
         sentinel.appendChild(indicator);
@@ -6780,7 +6852,7 @@ ${page.xhtml}
             destroyed: false,
             loading: false,
             distance: 0,
-            threshold: Math.max(150, Math.min(240, Math.round((window.innerHeight || 720) * 0.22))),
+            threshold: Math.max(1, Math.round((window.innerHeight || document.documentElement.clientHeight || 720) * 0.5)),
             releaseTimer: null,
             lastTouchY: null,
             requestAdvance: null,
@@ -6808,10 +6880,19 @@ ${page.xhtml}
             controller.releaseTimer = null;
         };
 
+        const enableScrollSnap = () => {
+            if (controller.destroyed) return;
+            document.documentElement.classList.add('zh-feed-scroll-snap');
+        };
+
         const setPullRatio = ratio => {
             const safeRatio = Math.max(0, Math.min(1, ratio));
+            const percent = Math.round(safeRatio * 100);
             sentinel.style.setProperty('--zh-feed-pull-ratio', String(safeRatio));
+            sentinel.style.setProperty('--zh-feed-progress-angle', `${safeRatio * 360}deg`);
             sentinel.style.height = `${Math.round(104 * safeRatio)}px`;
+            sentinel.setAttribute('aria-valuenow', String(percent));
+            progressValue.textContent = `${percent}%`;
         };
 
         const resetGate = () => {
@@ -6820,6 +6901,7 @@ ${page.xhtml}
             controller.distance = 0;
             setPullRatio(0);
             sentinel.classList.remove('is-pulling', 'is-error');
+            sentinel.setAttribute('aria-busy', 'false');
             status.textContent = '';
         };
 
@@ -6835,6 +6917,8 @@ ${page.xhtml}
             sentinel.classList.remove('is-pulling', 'is-error');
             sentinel.classList.add('is-loading');
             setPullRatio(1);
+            sentinel.setAttribute('aria-busy', 'true');
+            progressValue.textContent = '...';
             status.textContent = labels.loading || '正在准备下一组...';
             pinGateToViewport();
 
@@ -6854,6 +6938,7 @@ ${page.xhtml}
                 sentinel.classList.remove('is-loading');
                 sentinel.classList.add('is-error');
                 setPullRatio(0.72);
+                sentinel.setAttribute('aria-busy', 'false');
                 status.textContent = labels.error || '网络未跟上，继续向下滚动重试';
                 scheduleRelease();
             }
@@ -6880,6 +6965,7 @@ ${page.xhtml}
 
         const onWheel = event => {
             if (controller.destroyed || controller.loading) return;
+            if (event.deltaY !== 0) enableScrollSnap();
             if (event.deltaY < 0) {
                 resetGate();
                 return;
@@ -6899,6 +6985,7 @@ ${page.xhtml}
             if (!Number.isFinite(touchY) || !Number.isFinite(controller.lastTouchY)) return;
             const delta = controller.lastTouchY - touchY;
             controller.lastTouchY = touchY;
+            if (delta !== 0) enableScrollSnap();
             if (delta < 0) {
                 resetGate();
                 return;
@@ -6906,6 +6993,14 @@ ${page.xhtml}
             if (delta <= 0 || !gateIsVisible()) return;
             event.preventDefault();
             recordPull(delta);
+        };
+
+        const onResize = () => {
+            const previousThreshold = controller.threshold;
+            controller.threshold = Math.max(1, Math.round((window.innerHeight || document.documentElement.clientHeight || 720) * 0.5));
+            if (!controller.distance || controller.loading) return;
+            controller.distance = Math.min(controller.threshold, controller.distance * controller.threshold / previousThreshold);
+            setPullRatio(controller.distance / controller.threshold);
         };
 
         controller.requestAdvance = requestAdvance;
@@ -6917,16 +7012,18 @@ ${page.xhtml}
             window.removeEventListener('wheel', onWheel);
             window.removeEventListener('touchstart', onTouchStart);
             window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('resize', onResize);
             document.documentElement.classList.remove('zh-feed-scroll-snap');
             sentinel.classList.remove('is-pulling', 'is-loading', 'is-error');
             sentinel.style.removeProperty('--zh-feed-pull-ratio');
+            sentinel.style.removeProperty('--zh-feed-progress-angle');
             sentinel.style.removeProperty('height');
         };
 
         window.addEventListener('wheel', onWheel, { passive: false });
         window.addEventListener('touchstart', onTouchStart, { passive: true });
         window.addEventListener('touchmove', onTouchMove, { passive: false });
-        document.documentElement.classList.add('zh-feed-scroll-snap');
+        window.addEventListener('resize', onResize, { passive: true });
         _feedScrollController = controller;
         return controller;
     }
@@ -8355,7 +8452,7 @@ ${page.xhtml}
     // 首页推荐 ↔ 关注动态 分段开关（标题同行，右上角）。activeFeed: 'home' | 'follow'
     function appendFeedSwitchHeader(container, activeFeed) {
         const head = document.createElement('div');
-        head.className = 'zh-feed-head';
+        head.className = 'zh-feed-head zh-feed-batch-anchor';
 
         const title = document.createElement('h1');
         title.className = 'zh-home-title';

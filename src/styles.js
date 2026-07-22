@@ -79,18 +79,20 @@ const STYLE_CSS = `
     .zh-home-scroll-count { min-height: 32px; display: inline-flex; align-items: center; }
     html.zh-feed-scroll-snap { scroll-snap-type: y proximity; scroll-padding-top: 12px; }
     .zh-feed-batch-anchor { scroll-snap-align: start; scroll-snap-stop: normal; }
-    .zh-feed-load-gate { --zh-feed-pull-ratio: 0; height: 0; margin: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--zh-text); opacity: .62; font-size: 12px; line-height: 1.4; transition: height .24s cubic-bezier(.2,.75,.25,1), opacity .18s ease; }
+    .zh-feed-load-gate { --zh-feed-pull-ratio: 0; --zh-feed-progress-angle: 0deg; height: 0; margin: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--zh-text); opacity: .62; font-size: 12px; line-height: 1.4; transition: height .24s cubic-bezier(.2,.75,.25,1), opacity .18s ease; }
     .zh-feed-load-gate.is-pulling, .zh-feed-load-gate.is-loading, .zh-feed-load-gate.is-error { margin-top: 8px; }
-    .zh-feed-load-indicator { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: var(--zh-accent); }
-    .zh-feed-load-arrow { transform: translateY(-2px); opacity: .78; font-size: 18px; line-height: 1; transition: transform .16s ease, opacity .16s ease; }
-    .zh-feed-load-gate.is-pulling .zh-feed-load-arrow { transform: translateY(1px); opacity: 1; }
+    .zh-feed-load-indicator { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; color: var(--zh-accent); }
+    .zh-feed-load-ring { position: relative; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--zh-accent) 0deg var(--zh-feed-progress-angle), color-mix(in srgb, var(--zh-border) 68%, transparent) var(--zh-feed-progress-angle) 360deg); transform: scale(.94); transition: transform .18s cubic-bezier(.2,.75,.25,1); }
+    .zh-feed-load-ring::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--zh-paper); }
+    .zh-feed-load-value { position: relative; z-index: 1; min-width: 24px; color: var(--zh-text); opacity: .72; font-size: 8px; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+    .zh-feed-load-gate.is-pulling .zh-feed-load-ring { transform: scale(1); }
     .zh-feed-load-gate.is-loading { height: 104px !important; opacity: .82; }
-    .zh-feed-load-gate.is-loading .zh-feed-load-indicator { border: 2px solid color-mix(in srgb, var(--zh-border) 76%, transparent); border-top-color: var(--zh-accent); border-radius: 50%; animation: zh-feed-load-spin .72s linear infinite; }
-    .zh-feed-load-gate.is-loading .zh-feed-load-arrow { opacity: 0; }
+    .zh-feed-load-gate.is-loading .zh-feed-load-ring { background: conic-gradient(var(--zh-accent) 0deg 92deg, color-mix(in srgb, var(--zh-border) 45%, transparent) 92deg 360deg); animation: zh-feed-load-spin .72s linear infinite; }
+    .zh-feed-load-gate.is-loading .zh-feed-load-value { opacity: 0; }
     .zh-feed-load-gate.is-error { opacity: .68; }
     .zh-feed-load-gate.is-exhausted { height: auto !important; min-height: 42px; margin-top: 12px; opacity: .5; }
     @keyframes zh-feed-load-spin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-indicator { animation-duration: 1.2s; } }
+    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate, .zh-feed-load-ring { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-ring { animation-duration: 1.2s; } }
     .zh-toread-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 6px; margin-left: auto; }
     .zh-toread-btn svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }

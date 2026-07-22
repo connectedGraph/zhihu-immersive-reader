@@ -112,13 +112,20 @@
         sentinel.innerHTML = '';
         sentinel.className = 'zh-feed-load-gate';
         sentinel.setAttribute('aria-live', 'polite');
+        sentinel.setAttribute('role', 'progressbar');
+        sentinel.setAttribute('aria-valuemin', '0');
+        sentinel.setAttribute('aria-valuemax', '100');
+        sentinel.setAttribute('aria-valuenow', '0');
         const indicator = document.createElement('span');
         indicator.className = 'zh-feed-load-indicator';
         indicator.setAttribute('aria-hidden', 'true');
-        const arrow = document.createElement('span');
-        arrow.className = 'zh-feed-load-arrow';
-        arrow.textContent = '↓';
-        indicator.appendChild(arrow);
+        const progressRing = document.createElement('span');
+        progressRing.className = 'zh-feed-load-ring';
+        const progressValue = document.createElement('span');
+        progressValue.className = 'zh-feed-load-value';
+        progressValue.textContent = '0%';
+        progressRing.appendChild(progressValue);
+        indicator.appendChild(progressRing);
         const status = document.createElement('span');
         status.className = 'zh-feed-load-label';
         sentinel.appendChild(indicator);
@@ -128,7 +135,7 @@
             destroyed: false,
             loading: false,
             distance: 0,
-            threshold: Math.max(150, Math.min(240, Math.round((window.innerHeight || 720) * 0.22))),
+            threshold: Math.max(1, Math.round((window.innerHeight || document.documentElement.clientHeight || 720) * 0.5)),
             releaseTimer: null,
             lastTouchY: null,
             requestAdvance: null,
@@ -156,10 +163,19 @@
             controller.releaseTimer = null;
         };
 
+        const enableScrollSnap = () => {
+            if (controller.destroyed) return;
+            document.documentElement.classList.add('zh-feed-scroll-snap');
+        };
+
         const setPullRatio = ratio => {
             const safeRatio = Math.max(0, Math.min(1, ratio));
+            const percent = Math.round(safeRatio * 100);
             sentinel.style.setProperty('--zh-feed-pull-ratio', String(safeRatio));
+            sentinel.style.setProperty('--zh-feed-progress-angle', `${safeRatio * 360}deg`);
             sentinel.style.height = `${Math.round(104 * safeRatio)}px`;
+            sentinel.setAttribute('aria-valuenow', String(percent));
+            progressValue.textContent = `${percent}%`;
         };
 
         const resetGate = () => {
@@ -168,6 +184,7 @@
             controller.distance = 0;
             setPullRatio(0);
             sentinel.classList.remove('is-pulling', 'is-error');
+            sentinel.setAttribute('aria-busy', 'false');
             status.textContent = '';
         };
 
@@ -183,6 +200,8 @@
             sentinel.classList.remove('is-pulling', 'is-error');
             sentinel.classList.add('is-loading');
             setPullRatio(1);
+            sentinel.setAttribute('aria-busy', 'true');
+            progressValue.textContent = '...';
             status.textContent = labels.loading || '正在准备下一组...';
             pinGateToViewport();
 
@@ -202,6 +221,7 @@
                 sentinel.classList.remove('is-loading');
                 sentinel.classList.add('is-error');
                 setPullRatio(0.72);
+                sentinel.setAttribute('aria-busy', 'false');
                 status.textContent = labels.error || '网络未跟上，继续向下滚动重试';
                 scheduleRelease();
             }
@@ -228,6 +248,7 @@
 
         const onWheel = event => {
             if (controller.destroyed || controller.loading) return;
+            if (event.deltaY !== 0) enableScrollSnap();
             if (event.deltaY < 0) {
                 resetGate();
                 return;
@@ -247,6 +268,7 @@
             if (!Number.isFinite(touchY) || !Number.isFinite(controller.lastTouchY)) return;
             const delta = controller.lastTouchY - touchY;
             controller.lastTouchY = touchY;
+            if (delta !== 0) enableScrollSnap();
             if (delta < 0) {
                 resetGate();
                 return;
@@ -254,6 +276,14 @@
             if (delta <= 0 || !gateIsVisible()) return;
             event.preventDefault();
             recordPull(delta);
+        };
+
+        const onResize = () => {
+            const previousThreshold = controller.threshold;
+            controller.threshold = Math.max(1, Math.round((window.innerHeight || document.documentElement.clientHeight || 720) * 0.5));
+            if (!controller.distance || controller.loading) return;
+            controller.distance = Math.min(controller.threshold, controller.distance * controller.threshold / previousThreshold);
+            setPullRatio(controller.distance / controller.threshold);
         };
 
         controller.requestAdvance = requestAdvance;
@@ -265,16 +295,18 @@
             window.removeEventListener('wheel', onWheel);
             window.removeEventListener('touchstart', onTouchStart);
             window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('resize', onResize);
             document.documentElement.classList.remove('zh-feed-scroll-snap');
             sentinel.classList.remove('is-pulling', 'is-loading', 'is-error');
             sentinel.style.removeProperty('--zh-feed-pull-ratio');
+            sentinel.style.removeProperty('--zh-feed-progress-angle');
             sentinel.style.removeProperty('height');
         };
 
         window.addEventListener('wheel', onWheel, { passive: false });
         window.addEventListener('touchstart', onTouchStart, { passive: true });
         window.addEventListener('touchmove', onTouchMove, { passive: false });
-        document.documentElement.classList.add('zh-feed-scroll-snap');
+        window.addEventListener('resize', onResize, { passive: true });
         _feedScrollController = controller;
         return controller;
     }

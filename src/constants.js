@@ -6,11 +6,10 @@
 
 // ----- 主题样式变量（CSS自定义属性） -----
 const THEMES = [
-    { name: '📜 宣纸', vars: { '--zh-bg': '#E5DEC9', '--zh-paper': '#F8F4E6', '--zh-text': '#2b2b2b', '--zh-title': '#1a1a1a', '--zh-accent': '#8B2626', '--zh-border': '#d4cbb8', '--zh-quote': '#f0ebe1', '--zh-code': '#eae5d9', '--zh-modal-bg': '#F8F4E6' } },
-    { name: '🎋 竹简', vars: { '--zh-bg': '#D6E4D0', '--zh-paper': '#EDF5EA', '--zh-text': '#2C3E2E', '--zh-title': '#1B2A1E', '--zh-accent': '#3D7A4A', '--zh-border': '#B3CCAF', '--zh-quote': '#DDE9DA', '--zh-code': '#D4E2D0', '--zh-modal-bg': '#EDF5EA' } },
-    { name: '🧳 牛皮', vars: { '--zh-bg': '#D4C4A8', '--zh-paper': '#F5EBDA', '--zh-text': '#3D2E1C', '--zh-title': '#2A1A08', '--zh-accent': '#8B5E34', '--zh-border': '#C9B896', '--zh-quote': '#EDE3D1', '--zh-code': '#E8DCCA', '--zh-modal-bg': '#F5EBDA' } },
-    { name: '🧛 暗血', vars: { '--zh-bg': '#0F0F0F', '--zh-paper': '#1A1A1A', '--zh-text': '#C8C8C8', '--zh-title': '#E0E0E0', '--zh-accent': '#C0392B', '--zh-border': '#2E2E2E', '--zh-quote': '#222222', '--zh-code': '#161616', '--zh-modal-bg': '#242424' } },
-    { name: '⚪ 简白', vars: { '--zh-bg': '#F5F5F5', '--zh-paper': '#FFFFFF', '--zh-text': '#333333', '--zh-title': '#000000', '--zh-accent': '#0066CC', '--zh-border': '#E0E0E0', '--zh-quote': '#F8F8F8', '--zh-code': '#F5F5F5', '--zh-modal-bg': '#FFFFFF' } }
+    { name: '宣纸', vars: { '--zh-bg': '#E5DEC9', '--zh-paper': '#F8F4E6', '--zh-text': '#2b2b2b', '--zh-title': '#1a1a1a', '--zh-accent': '#8B2626', '--zh-border': '#d4cbb8', '--zh-quote': '#f0ebe1', '--zh-code': '#eae5d9', '--zh-modal-bg': '#F8F4E6' } },
+    { name: '蓝白', vars: { '--zh-bg': '#D8E1E8', '--zh-paper': '#E8EEF3', '--zh-text': '#2E3A44', '--zh-title': '#111820', '--zh-accent': '#246B9F', '--zh-border': '#B4C3CF', '--zh-quote': '#DEE7ED', '--zh-code': '#D8E2E9', '--zh-modal-bg': '#E6EDF2' } },
+    { name: '吸血鬼', vars: { '--zh-bg': '#171315', '--zh-paper': '#211B1E', '--zh-text': '#C9BEC1', '--zh-title': '#E3D8DB', '--zh-accent': '#C47274', '--zh-border': '#3B2D32', '--zh-quote': '#2A2225', '--zh-code': '#1C1719', '--zh-modal-bg': '#261F22' } },
+    { name: '暗蓝', vars: { '--zh-bg': '#101820', '--zh-paper': '#18242E', '--zh-text': '#B9C7D2', '--zh-title': '#DDE7EE', '--zh-accent': '#5B97BF', '--zh-border': '#2D4150', '--zh-quote': '#1E2D38', '--zh-code': '#13202A', '--zh-modal-bg': '#1A2832' } }
 ];
 
 // 自定义主题：localStorage 键 + 各 CSS 变量对应 UI 部位的中文指引

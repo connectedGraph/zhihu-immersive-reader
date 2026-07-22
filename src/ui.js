@@ -1,4 +1,49 @@
     const THEME_STORAGE_KEY = 'zh-immersive-theme-index';
+    const THEME_STORAGE_VERSION_KEY = 'zh-immersive-theme-schema';
+    const THEME_STORAGE_VERSION = '3';
+
+    function readThemeStorage(key, fallback = null) {
+        try {
+            if (typeof GM_getValue === 'function') {
+                const value = GM_getValue(key, null);
+                if (value !== null && value !== undefined) return value;
+            }
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : value;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function writeThemeStorage(key, value) {
+        try { localStorage.setItem(key, String(value)); } catch (e) {}
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, String(value)); } catch (e) {}
+    }
+
+    function normalizeStoredThemeIndex(raw) {
+        const index = parseInt(raw, 10);
+        if (!Number.isFinite(index) || index < 0) return 0;
+        const storedVersion = String(readThemeStorage(THEME_STORAGE_VERSION_KEY, ''));
+        if (storedVersion === THEME_STORAGE_VERSION) return index;
+
+        let migrated = 0;
+        if (storedVersion === '2') {
+            // v2: 宣纸、吸血鬼、蓝白；v3 inserts 暗蓝 after reordered built-ins.
+            const versionTwoMap = { 0: 0, 1: 2, 2: 1 };
+            migrated = Object.prototype.hasOwnProperty.call(versionTwoMap, index)
+                ? versionTwoMap[index]
+                : index >= 3 ? index + 1 : 0;
+        } else {
+            // Published legacy builds had five built-ins; retained themes were 宣纸 and 暗血.
+            const legacyMap = { 0: 0, 3: 2 };
+            migrated = Object.prototype.hasOwnProperty.call(legacyMap, index)
+                ? legacyMap[index]
+                : index >= 5 ? index - 1 : 0;
+        }
+        writeThemeStorage(THEME_STORAGE_VERSION_KEY, THEME_STORAGE_VERSION);
+        writeThemeStorage(THEME_STORAGE_KEY, migrated);
+        return migrated;
+    }
 
     // 启动时把用户自定义主题追加进 THEMES（mutate，不重新赋值 const）
     function loadCustomThemes() {
@@ -28,15 +73,40 @@
 
     // 容错解析主题对象：先严格 JSON，失败再把单引号/无引号 key normalize 后重试
     function parseThemeJSON(raw) {
-        const text = String(raw).trim().replace(/;$/, '');
-        try { return JSON.parse(text); } catch (e) {}
+        const text = String(raw).trim().replace(/;$/, '').replace(/^[A-Za-z_$][\w$-]*\s*:\s*(?=\{)/, '');
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch (e) {}
         try {
-            const normalized = text
-                .replace(/'/g, '"')
-                .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
-                .replace(/,\s*([}\]])/g, '$1');
-            return JSON.parse(normalized);
+            if (!parsed) {
+                const normalized = text
+                    .replace(/'/g, '"')
+                    .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
+                    .replace(/,\s*([}\]])/g, '$1');
+                parsed = JSON.parse(normalized);
+            }
         } catch (e) { return null; }
+        if (!parsed || typeof parsed !== 'object') return null;
+        // Accept the Codex theme envelope as well as the app's native name/vars shape.
+        if (!parsed.vars && parsed.theme && typeof parsed.theme === 'object') {
+            const theme = parsed.theme;
+            const surface = theme.surface || '#E8EEF3';
+            const ink = theme.ink || '#26313B';
+            parsed = {
+                name: parsed.codeThemeId ? `Codex ${parsed.codeThemeId}` : 'Codex 主题',
+                vars: {
+                    '--zh-bg': surface === '#ffffff' ? '#D8E1E8' : surface,
+                    '--zh-paper': surface,
+                    '--zh-text': ink,
+                    '--zh-title': ink,
+                    '--zh-accent': theme.accent || '#246B9F',
+                    '--zh-border': '#B4C3CF',
+                    '--zh-quote': '#DEE7ED',
+                    '--zh-code': '#D8E2E9',
+                    '--zh-modal-bg': surface
+                }
+            };
+        }
+        return parsed;
     }
 
     function removeCustomTheme(name) {
@@ -47,15 +117,9 @@
     }
 
     let currentThemeIndex = (() => {
-        try {
-            if (typeof GM_getValue === 'function') {
-                const gm = GM_getValue(THEME_STORAGE_KEY, null);
-                if (gm !== null) { const idx = parseInt(gm, 10); if (idx >= 0 && idx < THEMES.length) return idx; }
-            }
-            const saved = localStorage.getItem(THEME_STORAGE_KEY);
-            const idx = saved !== null ? parseInt(saved, 10) : 0;
-            return (idx >= 0 && idx < THEMES.length) ? idx : 0;
-        } catch (e) { return 0; }
+        const saved = readThemeStorage(THEME_STORAGE_KEY, '0');
+        const index = normalizeStoredThemeIndex(saved);
+        return (index >= 0 && index < THEMES.length) ? index : 0;
     })();
     function applyTheme(index) {
         const safeIndex = (index >= 0 && index < THEMES.length) ? index : 0;
@@ -63,8 +127,8 @@
         const theme = THEMES[safeIndex];
         const root = document.documentElement;
         for (let key in theme.vars) root.style.setProperty(key, theme.vars[key], 'important');
-        try { localStorage.setItem(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
-        try { if (typeof GM_setValue === 'function') GM_setValue(THEME_STORAGE_KEY, String(safeIndex)); } catch (e) {}
+        writeThemeStorage(THEME_STORAGE_KEY, safeIndex);
+        writeThemeStorage(THEME_STORAGE_VERSION_KEY, THEME_STORAGE_VERSION);
         applyReadingFont(config).catch(err => console.warn('知乎沉浸式阅读：字体加载失败', err));
     }
 

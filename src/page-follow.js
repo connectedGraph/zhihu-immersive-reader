@@ -285,7 +285,7 @@
     // 首页推荐 ↔ 关注动态 分段开关（标题同行，右上角）。activeFeed: 'home' | 'follow'
     function appendFeedSwitchHeader(container, activeFeed) {
         const head = document.createElement('div');
-        head.className = 'zh-feed-head';
+        head.className = 'zh-feed-head zh-feed-batch-anchor';
 
         const title = document.createElement('h1');
         title.className = 'zh-home-title';
