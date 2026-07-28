@@ -36,10 +36,123 @@
     }
 
 
-    function findPostCommentsNode() {
-        const comments = document.querySelector('.Comments-container');
+    function findPostCommentsNode(root = document) {
+        const scope = root?.querySelector ? root : document;
+        const comments = scope.matches?.('.Comments-container')
+            ? scope
+            : scope.querySelector('.Comments-container');
         if (!comments || comments.closest('#immersive-wrapper')) return null;
         return comments;
+    }
+
+    function mountPostCommentsNode(comments, wrapper = document.getElementById('immersive-wrapper')) {
+        if (!comments || !wrapper || !comments.parentNode) return false;
+        if (comments.closest('#immersive-wrapper') === wrapper) {
+            _postCommentsNode = comments;
+            return true;
+        }
+
+        const previousPlaceholder = document.getElementById('zh-comments-placeholder');
+        if (previousPlaceholder) previousPlaceholder.remove();
+        if (_postCommentsNode && _postCommentsNode !== comments && _postCommentsNode.closest('#immersive-wrapper')) {
+            _postCommentsNode.remove();
+        }
+
+        const commentsPlaceholder = document.createElement('span');
+        commentsPlaceholder.id = 'zh-comments-placeholder';
+        commentsPlaceholder.style.display = 'none';
+        comments.parentNode.insertBefore(commentsPlaceholder, comments);
+
+        _postCommentsNode = comments;
+        const insertBeforeNode = (_actionBarNode?.parentNode === wrapper)
+            ? _actionBarNode.nextSibling
+            : null;
+        wrapper.insertBefore(comments, insertBeforeNode);
+        return true;
+    }
+
+    function scrollPostCommentsIntoView() {
+        const comments = _postCommentsNode;
+        if (!comments) return;
+        requestAnimationFrame(() => {
+            if (comments.isConnected) comments.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+
+    function syncPostCommentsNode() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper || !_postCommentsHostNode || !_postCommentsRequested) return;
+
+        const comments = findPostCommentsNode(_postCommentsHostNode);
+        if (comments) {
+            if (mountPostCommentsNode(comments, wrapper)) scrollPostCommentsIntoView();
+            return;
+        }
+
+        const placeholder = document.getElementById('zh-comments-placeholder');
+        if (_postCommentsNode && !placeholder) {
+            if (_postCommentsNode.closest('#immersive-wrapper')) _postCommentsNode.remove();
+            _postCommentsNode = null;
+        }
+    }
+
+    function schedulePostCommentsSync() {
+        if (_postCommentsSyncQueued) return;
+        _postCommentsSyncQueued = true;
+        queueMicrotask(() => {
+            _postCommentsSyncQueued = false;
+            if (window._isImmersive) syncPostCommentsNode();
+        });
+    }
+
+    function requestPostComments() {
+        _postCommentsRequested = true;
+
+        if (_postCommentsNode?.closest('#immersive-wrapper')) {
+            scrollPostCommentsIntoView();
+            return;
+        }
+
+        const wrapper = document.getElementById('immersive-wrapper');
+        const comments = findPostCommentsNode(_postCommentsHostNode);
+        if (mountPostCommentsNode(comments, wrapper)) {
+            scrollPostCommentsIntoView();
+        } else {
+            schedulePostCommentsSync();
+        }
+    }
+
+    function bindPostCommentsButton() {
+        unbindPostCommentsButton();
+        const button = _actionBarNode?.querySelector('.BottomActions-CommentBtn');
+        if (!button) return;
+
+        _postCommentsButtonNode = button;
+        _postCommentsButtonHandler = () => requestPostComments();
+        button.addEventListener('click', _postCommentsButtonHandler);
+    }
+
+    function unbindPostCommentsButton() {
+        if (_postCommentsButtonNode && _postCommentsButtonHandler) {
+            _postCommentsButtonNode.removeEventListener('click', _postCommentsButtonHandler);
+        }
+        _postCommentsButtonNode = null;
+        _postCommentsButtonHandler = null;
+    }
+
+    function startPostCommentsObserver() {
+        stopPostCommentsObserver();
+        if (!_postCommentsHostNode) return;
+
+        _postCommentsObserver = new MutationObserver(schedulePostCommentsSync);
+        _postCommentsObserver.observe(_postCommentsHostNode, { childList: true, subtree: true });
+    }
+
+    function stopPostCommentsObserver() {
+        if (_postCommentsObserver) _postCommentsObserver.disconnect();
+        _postCommentsObserver = null;
+        _postCommentsSyncQueued = false;
+        unbindPostCommentsButton();
     }
 
     function findPostCommentInputNode() {
@@ -62,6 +175,8 @@
             _articleNode = document.querySelector('.Post-Main.Post-NormalMain') || document.querySelector('.Post-Main') || document.querySelector('.AnswerItem');
             if (!_articleNode) return alert('阁下，未寻得文章主体！');
 
+            _postCommentsHostNode = _articleNode.parentElement;
+            _postCommentsRequested = false;
             _actionBarNode = _articleNode.querySelector('.ContentItem-actions') || document.querySelector('.ContentItem-actions');
 
             const articlePlaceholder = document.createElement('span');
@@ -88,16 +203,7 @@
             wrapper.appendChild(_articleNode);
             if (_actionBarNode) wrapper.appendChild(_actionBarNode);
 
-            _postCommentsNode = findPostCommentsNode();
-            if (_postCommentsNode) {
-                const commentsPlaceholder = document.createElement('span');
-                commentsPlaceholder.id = 'zh-comments-placeholder';
-                commentsPlaceholder.style.display = 'none';
-                if (_postCommentsNode.parentNode) {
-                    _postCommentsNode.parentNode.insertBefore(commentsPlaceholder, _postCommentsNode);
-                }
-                wrapper.appendChild(_postCommentsNode);
-            }
+            _postCommentsNode = null;
 
             _postCommentInputNode = findPostCommentInputNode();
             if (_postCommentInputNode) {
@@ -120,6 +226,8 @@
             });
 
             reactRoot.appendChild(wrapper);
+            startPostCommentsObserver();
+            bindPostCommentsButton();
             document.body.appendChild(createCopyMarkdownBtn());
 
             const postToreadBtn = createPageToReadBtn(

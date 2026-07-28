@@ -221,6 +221,7 @@ function enterImmersive() {
     function _doExitImmersive() {
         stopReadingProgressTracker();
         stopArticleAdCleanup();
+        stopPostCommentsObserver();
         removeCollectOverlay();
         restoreLiveMount();
         disconnectFeedScrollController();
@@ -330,6 +331,12 @@ function enterImmersive() {
         _articleNode = null;
         _actionBarNode = null;
         _postCommentsNode = null;
+        _postCommentsHostNode = null;
+        _postCommentsObserver = null;
+        _postCommentsSyncQueued = false;
+        _postCommentsRequested = false;
+        _postCommentsButtonNode = null;
+        _postCommentsButtonHandler = null;
         _postCommentInputNode = null;
 
         _personalSpaceBackup = {

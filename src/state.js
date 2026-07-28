@@ -15,6 +15,12 @@
     let _articleNode = null;
     let _actionBarNode = null;
     let _postCommentsNode = null;
+    let _postCommentsHostNode = null;
+    let _postCommentsObserver = null;
+    let _postCommentsSyncQueued = false;
+    let _postCommentsRequested = false;
+    let _postCommentsButtonNode = null;
+    let _postCommentsButtonHandler = null;
     let _postCommentInputNode = null;
     let _liveMountState = null;
     let _articleSummary = "";

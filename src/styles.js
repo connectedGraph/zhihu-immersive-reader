@@ -247,6 +247,14 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    #immersive-wrapper .Comments-container { color: var(--zh-text) !important; background-color: var(--zh-paper) !important; border-color: var(--zh-border) !important; }
+    #immersive-wrapper .Comments-container [data-id] { color: var(--zh-text) !important; background-color: transparent !important; border-color: var(--zh-border) !important; }
+    #immersive-wrapper .Comments-container .CommentContent,
+    #immersive-wrapper .Comments-container .CommentContent :where(div, p, span) { color: var(--zh-text) !important; }
+    #immersive-wrapper .Comments-container .CommentContent a,
+    #immersive-wrapper .Comments-container .CommentContent a :where(div, span) { color: var(--zh-accent) !important; }
+    #immersive-wrapper .Comments-container .InputLike,
+    #immersive-wrapper .Comments-container [contenteditable="true"] { color: var(--zh-text) !important; background-color: var(--zh-quote) !important; border-color: var(--zh-border) !important; }
     #immersive-wrapper .zh-space-hidden { display: none !important; }
     /* Action bar 按钮 */
     .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }

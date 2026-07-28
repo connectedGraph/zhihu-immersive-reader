@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.1.3
+// @version      5.1.4
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -476,6 +476,14 @@ const STYLE_CSS = `
     .zh-api-author .zh-api-avatar { width: 36px !important; height: 36px !important; min-width: 36px !important; max-width: 36px !important; min-height: 36px !important; max-height: 36px !important; border-radius: 5px !important; object-fit: cover !important; box-shadow: none !important; cursor: default !important; flex: 0 0 36px !important; margin: 0 !important; }
     .zh-api-author .zh-api-author-text { flex: 1; min-width: 0; line-height: 1.5; }
     #immersive-wrapper .ContentItem-actions { display: flex !important; visibility: visible !important; opacity: 1 !important; position: static !important; bottom: auto !important; box-shadow: none !important; background: transparent !important; margin-top: 28px !important; flex-wrap: wrap !important; gap: 8px !important; }
+    #immersive-wrapper .Comments-container { color: var(--zh-text) !important; background-color: var(--zh-paper) !important; border-color: var(--zh-border) !important; }
+    #immersive-wrapper .Comments-container [data-id] { color: var(--zh-text) !important; background-color: transparent !important; border-color: var(--zh-border) !important; }
+    #immersive-wrapper .Comments-container .CommentContent,
+    #immersive-wrapper .Comments-container .CommentContent :where(div, p, span) { color: var(--zh-text) !important; }
+    #immersive-wrapper .Comments-container .CommentContent a,
+    #immersive-wrapper .Comments-container .CommentContent a :where(div, span) { color: var(--zh-accent) !important; }
+    #immersive-wrapper .Comments-container .InputLike,
+    #immersive-wrapper .Comments-container [contenteditable="true"] { color: var(--zh-text) !important; background-color: var(--zh-quote) !important; border-color: var(--zh-border) !important; }
     #immersive-wrapper .zh-space-hidden { display: none !important; }
     /* Action bar 按钮 */
     .zh-api-action-bar { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center !important; margin-top: 20px !important; padding-top: 14px !important; border-top: 1px dashed var(--zh-border) !important; }
@@ -1314,6 +1322,12 @@ const HELP_MODAL_HTML = `
     let _articleNode = null;
     let _actionBarNode = null;
     let _postCommentsNode = null;
+    let _postCommentsHostNode = null;
+    let _postCommentsObserver = null;
+    let _postCommentsSyncQueued = false;
+    let _postCommentsRequested = false;
+    let _postCommentsButtonNode = null;
+    let _postCommentsButtonHandler = null;
     let _postCommentInputNode = null;
     let _liveMountState = null;
     let _articleSummary = "";
@@ -5820,10 +5834,123 @@ ${page.xhtml}
     }
 
 
-    function findPostCommentsNode() {
-        const comments = document.querySelector('.Comments-container');
+    function findPostCommentsNode(root = document) {
+        const scope = root?.querySelector ? root : document;
+        const comments = scope.matches?.('.Comments-container')
+            ? scope
+            : scope.querySelector('.Comments-container');
         if (!comments || comments.closest('#immersive-wrapper')) return null;
         return comments;
+    }
+
+    function mountPostCommentsNode(comments, wrapper = document.getElementById('immersive-wrapper')) {
+        if (!comments || !wrapper || !comments.parentNode) return false;
+        if (comments.closest('#immersive-wrapper') === wrapper) {
+            _postCommentsNode = comments;
+            return true;
+        }
+
+        const previousPlaceholder = document.getElementById('zh-comments-placeholder');
+        if (previousPlaceholder) previousPlaceholder.remove();
+        if (_postCommentsNode && _postCommentsNode !== comments && _postCommentsNode.closest('#immersive-wrapper')) {
+            _postCommentsNode.remove();
+        }
+
+        const commentsPlaceholder = document.createElement('span');
+        commentsPlaceholder.id = 'zh-comments-placeholder';
+        commentsPlaceholder.style.display = 'none';
+        comments.parentNode.insertBefore(commentsPlaceholder, comments);
+
+        _postCommentsNode = comments;
+        const insertBeforeNode = (_actionBarNode?.parentNode === wrapper)
+            ? _actionBarNode.nextSibling
+            : null;
+        wrapper.insertBefore(comments, insertBeforeNode);
+        return true;
+    }
+
+    function scrollPostCommentsIntoView() {
+        const comments = _postCommentsNode;
+        if (!comments) return;
+        requestAnimationFrame(() => {
+            if (comments.isConnected) comments.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+
+    function syncPostCommentsNode() {
+        const wrapper = document.getElementById('immersive-wrapper');
+        if (!wrapper || !_postCommentsHostNode || !_postCommentsRequested) return;
+
+        const comments = findPostCommentsNode(_postCommentsHostNode);
+        if (comments) {
+            if (mountPostCommentsNode(comments, wrapper)) scrollPostCommentsIntoView();
+            return;
+        }
+
+        const placeholder = document.getElementById('zh-comments-placeholder');
+        if (_postCommentsNode && !placeholder) {
+            if (_postCommentsNode.closest('#immersive-wrapper')) _postCommentsNode.remove();
+            _postCommentsNode = null;
+        }
+    }
+
+    function schedulePostCommentsSync() {
+        if (_postCommentsSyncQueued) return;
+        _postCommentsSyncQueued = true;
+        queueMicrotask(() => {
+            _postCommentsSyncQueued = false;
+            if (window._isImmersive) syncPostCommentsNode();
+        });
+    }
+
+    function requestPostComments() {
+        _postCommentsRequested = true;
+
+        if (_postCommentsNode?.closest('#immersive-wrapper')) {
+            scrollPostCommentsIntoView();
+            return;
+        }
+
+        const wrapper = document.getElementById('immersive-wrapper');
+        const comments = findPostCommentsNode(_postCommentsHostNode);
+        if (mountPostCommentsNode(comments, wrapper)) {
+            scrollPostCommentsIntoView();
+        } else {
+            schedulePostCommentsSync();
+        }
+    }
+
+    function bindPostCommentsButton() {
+        unbindPostCommentsButton();
+        const button = _actionBarNode?.querySelector('.BottomActions-CommentBtn');
+        if (!button) return;
+
+        _postCommentsButtonNode = button;
+        _postCommentsButtonHandler = () => requestPostComments();
+        button.addEventListener('click', _postCommentsButtonHandler);
+    }
+
+    function unbindPostCommentsButton() {
+        if (_postCommentsButtonNode && _postCommentsButtonHandler) {
+            _postCommentsButtonNode.removeEventListener('click', _postCommentsButtonHandler);
+        }
+        _postCommentsButtonNode = null;
+        _postCommentsButtonHandler = null;
+    }
+
+    function startPostCommentsObserver() {
+        stopPostCommentsObserver();
+        if (!_postCommentsHostNode) return;
+
+        _postCommentsObserver = new MutationObserver(schedulePostCommentsSync);
+        _postCommentsObserver.observe(_postCommentsHostNode, { childList: true, subtree: true });
+    }
+
+    function stopPostCommentsObserver() {
+        if (_postCommentsObserver) _postCommentsObserver.disconnect();
+        _postCommentsObserver = null;
+        _postCommentsSyncQueued = false;
+        unbindPostCommentsButton();
     }
 
     function findPostCommentInputNode() {
@@ -5846,6 +5973,8 @@ ${page.xhtml}
             _articleNode = document.querySelector('.Post-Main.Post-NormalMain') || document.querySelector('.Post-Main') || document.querySelector('.AnswerItem');
             if (!_articleNode) return alert('阁下，未寻得文章主体！');
 
+            _postCommentsHostNode = _articleNode.parentElement;
+            _postCommentsRequested = false;
             _actionBarNode = _articleNode.querySelector('.ContentItem-actions') || document.querySelector('.ContentItem-actions');
 
             const articlePlaceholder = document.createElement('span');
@@ -5872,16 +6001,7 @@ ${page.xhtml}
             wrapper.appendChild(_articleNode);
             if (_actionBarNode) wrapper.appendChild(_actionBarNode);
 
-            _postCommentsNode = findPostCommentsNode();
-            if (_postCommentsNode) {
-                const commentsPlaceholder = document.createElement('span');
-                commentsPlaceholder.id = 'zh-comments-placeholder';
-                commentsPlaceholder.style.display = 'none';
-                if (_postCommentsNode.parentNode) {
-                    _postCommentsNode.parentNode.insertBefore(commentsPlaceholder, _postCommentsNode);
-                }
-                wrapper.appendChild(_postCommentsNode);
-            }
+            _postCommentsNode = null;
 
             _postCommentInputNode = findPostCommentInputNode();
             if (_postCommentInputNode) {
@@ -5904,6 +6024,8 @@ ${page.xhtml}
             });
 
             reactRoot.appendChild(wrapper);
+            startPostCommentsObserver();
+            bindPostCommentsButton();
             document.body.appendChild(createCopyMarkdownBtn());
 
             const postToreadBtn = createPageToReadBtn(
@@ -13016,6 +13138,7 @@ function enterImmersive() {
     function _doExitImmersive() {
         stopReadingProgressTracker();
         stopArticleAdCleanup();
+        stopPostCommentsObserver();
         removeCollectOverlay();
         restoreLiveMount();
         disconnectFeedScrollController();
@@ -13125,6 +13248,12 @@ function enterImmersive() {
         _articleNode = null;
         _actionBarNode = null;
         _postCommentsNode = null;
+        _postCommentsHostNode = null;
+        _postCommentsObserver = null;
+        _postCommentsSyncQueued = false;
+        _postCommentsRequested = false;
+        _postCommentsButtonNode = null;
+        _postCommentsButtonHandler = null;
         _postCommentInputNode = null;
 
         _personalSpaceBackup = {
