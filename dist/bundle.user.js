@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         沉浸式知乎_让知乎成为你深度阅读、外语学习、认知提升的工具
 // @namespace    https://github.com/connectedGraph
-// @version      5.1.4
+// @version      5.1.5
 // @description  让知乎成为你深度阅读、外语学习、认知提升的工具
 // @author       Rap
 // @homepageURL  https://github.com/connectedGraph/zhihu-immersive-reader
@@ -172,6 +172,21 @@ const DEFAULT_CONFIG = {
     translationContextParagraphs: 1
 };
 
+// 知乎顶部/底部固定栏与侧边栏选择器。
+// 与 styles.js 的 STYLE_CSS 中 `display:none !important` 隐藏规则保持一致：
+// 进入沉浸模式由该 CSS 负责隐藏，退出时删除 #immersive-style 即恢复；
+// toolbar.js 退出兜底也会按此列表显式清理可能残留的 inline display。
+const CHROME_HIDE_SELECTORS = [
+    '.AppHeader',
+    '.ColumnPageHeader',
+    '.Post-StickyBar',
+    '.Sticky',
+    '.BottomActions',
+    '.CornerButtons',
+    '.GlobalSideBar',
+    '.css-1nalqj2'
+];
+
 const EXPORT_HIDDEN_SELECTORS = [
     '.AppHeader',
     '.GlobalSideBar',
@@ -231,7 +246,8 @@ const ICONS = {
 const STYLE_CSS = `
     body { background-color: var(--zh-bg) !important; margin: 0; padding: 50px 0; font-family: var(--zh-reader-font, 'Times New Roman', 'KaiTi', 'STKaiti', serif) !important; transition: background-color 0.5s ease !important; }
     .AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar, .css-1nalqj2, .zh-hidden-by-immersive { display: none !important; position: static !important; visibility: hidden !important; }
-    #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; transition: all 0.5s ease !important; }
+    #immersive-wrapper { position: relative; max-width: 760px; margin: 0 auto; padding: 60px 80px; background-color: var(--zh-paper) !important; border-radius: 4px; box-shadow: 0 4px 25px rgba(0,0,0,0.06); color: var(--zh-text) !important; line-height: 2.2; font-size: 18px; border-left: 2px solid var(--zh-accent) !important; border-right: 1px solid var(--zh-border) !important; display: block !important; animation: zh-fade-in 0.25s ease; transition: opacity 0.25s ease, background-color 0.5s ease !important; }
+    @keyframes zh-fade-in { from { opacity: 0; } to { opacity: 1; } }
     #immersive-wrapper h1, #immersive-wrapper h2, #immersive-wrapper h3 { font-weight: bold; color: var(--zh-title) !important; border-bottom: 1px dashed var(--zh-border) !important; padding-bottom: 12px; margin-top: 1.5em; }
     #immersive-wrapper blockquote { border-left: 4px solid var(--zh-accent) !important; background: var(--zh-quote) !important; color: var(--zh-text) !important; padding: 15px 20px !important; margin: 20px 0 !important; }
     #immersive-wrapper a { color: var(--zh-accent) !important; text-decoration: none !important; border-bottom: 1px solid var(--zh-accent) !important; }
@@ -321,7 +337,7 @@ const STYLE_CSS = `
     .zh-feed-load-gate.is-error { opacity: .68; }
     .zh-feed-load-gate.is-exhausted { height: auto !important; min-height: 42px; margin-top: 12px; opacity: .5; }
     @keyframes zh-feed-load-spin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate, .zh-feed-load-ring { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-ring { animation-duration: 1.2s; } }
+    @media (prefers-reduced-motion: reduce) { html.zh-feed-scroll-snap { scroll-snap-type: none; } .zh-feed-load-gate, .zh-feed-load-ring { transition: none; } .zh-feed-load-gate.is-loading .zh-feed-load-ring { animation-duration: 1.2s; } #immersive-wrapper { animation: none; } }
     .zh-toread-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 6px; margin-left: auto; }
     .zh-toread-btn svg { fill: none; stroke: currentColor; stroke-width: 2; width: 16px; height: 16px; }
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }
@@ -470,6 +486,11 @@ const STYLE_CSS = `
     .zh-copy-md-option { padding: 10px 14px; font-size: 13px; color: var(--zh-text); cursor: pointer; transition: background 0.1s; white-space: nowrap; }
     .zh-copy-md-option:hover { background: var(--zh-quote); color: var(--zh-accent); }
     .zh-ui-hidden .zh-copy-md-container { display: none !important; }
+    /* 回到顶部按钮：悬浮右下角（工具面板上方），样式沿用复制 Markdown 按钮，尺寸等同侧边栏按钮 */
+    .zh-back-top-btn { position: fixed; right: 30px; z-index: 999999; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; background: var(--zh-paper); border: 1px solid var(--zh-border); border-radius: 6px; color: var(--zh-text); cursor: pointer; font-family: inherit; box-shadow: 0 2px 10px rgba(0,0,0,0.1); transition: all 0.15s ease; }
+    .zh-back-top-btn:hover { border-color: var(--zh-accent); color: var(--zh-accent); }
+    .zh-back-top-btn svg { stroke: currentColor; }
+    .zh-ui-hidden .zh-back-top-btn { display: none !important; }
 
     /* API 推送流作者信息 - 覆盖全局 Avatar 规则 */
     .zh-api-author { display: flex !important; align-items: center !important; gap: 10px !important; margin: 8px 0 16px !important; }
@@ -6079,11 +6100,12 @@ ${page.xhtml}
 
             ensureImmersiveStyle();
 
-            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏（React 可能在脚本执行后重新渲染这些元素）
-            document.querySelectorAll('.AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar').forEach(el => {
-                el.style.display = 'none';
-                el.classList.add('zh-hidden-by-immersive');
-            });
+            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏。
+            // 注意：这里只依赖 ensureImmersiveStyle() 注入的 #immersive-style 里的
+            // `display:none !important` 规则（见 CHROME_HIDE_SELECTORS），不再手动写 inline style。
+            // 若在此追加 inline display:none，React 重渲染会重置 className、抹掉手动添加的
+            // zh-hidden-by-immersive class，却保留 inline display:none，导致退出时按 class 的
+            // 恢复逻辑漏掉这些元素、顶部导航栏/搜索框残留隐藏（即“退出后搜索栏消失”的 bug）。
 
             createQuestionToolsPanel();
 
@@ -13021,6 +13043,26 @@ ${page.xhtml}
         exitBtn.innerText = '退出沉浸';
         exitBtn.addEventListener('click', window.toggleImmersiveMode);
         document.body.appendChild(exitBtn);
+
+        // 回到顶部：悬浮右下角（工具面板上方），样式沿用复制 Markdown 按钮，尺寸等同侧边栏按钮
+        const backTopBtn = document.createElement('button');
+        backTopBtn.id = 'zh-back-top-btn';
+        backTopBtn.className = 'zh-back-top-btn';
+        backTopBtn.title = '回到顶部';
+        backTopBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+        backTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        document.body.appendChild(backTopBtn);
+
+        // 定位：与工具面板同列，放在面板正上方；等面板按钮弹入动画结束再校准一次
+        const placeBackTop = () => {
+            const panel = document.getElementById('zh-tools-panel');
+            const rect = panel ? panel.getBoundingClientRect() : null;
+            backTopBtn.style.bottom = (rect && rect.top > 0 ? Math.round(window.innerHeight - rect.top + 14) : 420) + 'px';
+        };
+        placeBackTop();
+        setTimeout(placeBackTop, 450);
     }
 
 
@@ -13105,22 +13147,20 @@ ${page.xhtml}
 function enterImmersive() {
         if (isHomePage()) {
             enterHomeImmersive();
-            return;
-        }
-        if (isFollowPage()) {
+        } else if (isFollowPage()) {
             enterFollowImmersive();
-            return;
-        }
-        if (isQuestionPage()) {
+        } else if (isQuestionPage()) {
             enterQuestionImmersive();
-            return;
-        }
-        if (isPostPage()) {
+        } else if (isPostPage()) {
             enterPostImmersive();
+        } else {
+            alert('阁下，此通用版目前只适配知乎首页、关注动态页 (/follow)、question 页面和 zhuanlan /p/ 页面。');
             return;
         }
-        alert('阁下，此通用版目前只适配知乎首页、关注动态页 (/follow)、question 页面和 zhuanlan /p/ 页面。');
+        // 进入淡入：由 #immersive-wrapper 的 CSS animation（zh-fade-in 0.25s）完成，与退出淡出对称。
     }
+
+
 
     function exitImmersive() {
         const wrapper = document.getElementById('immersive-wrapper');
@@ -13184,7 +13224,7 @@ function enterImmersive() {
         }
 
         // 2. 清理沉浸模式自己生成的壳子
-        ['immersive-wrapper', 'zh-tools-panel', 'immersive-style', 'immersive-exit-btn', 'zh-settings-modal', 'zh-help-modal', 'zh-radar-report-modal', 'zh-radar-book-modal'].forEach(id => {
+        ['immersive-wrapper', 'zh-tools-panel', 'immersive-style', 'immersive-exit-btn', 'zh-back-top-btn', 'zh-settings-modal', 'zh-help-modal', 'zh-radar-report-modal', 'zh-radar-book-modal'].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.remove();
         });
@@ -13207,6 +13247,15 @@ function enterImmersive() {
             child.style.display = child.dataset.origDisplay || '';
             child.classList.remove('zh-hidden-by-immersive');
             child.classList.remove('zh-hidden-by-immersive-inner');
+        });
+
+        // 防御兜底：React 重渲染可能重置 className、抹掉手动添加的 zh-hidden-by-immersive class，
+        // 导致上面的按 class 恢复漏掉 AppHeader 等顶部/固定栏元素；按 CHROME_HIDE_SELECTORS 显式清理。
+        CHROME_HIDE_SELECTORS.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+                el.style.display = '';
+                el.classList.remove('zh-hidden-by-immersive');
+            });
         });
 
         restoreQuestionAnswerPosition();

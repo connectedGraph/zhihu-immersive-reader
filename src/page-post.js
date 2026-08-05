@@ -281,11 +281,12 @@
 
             ensureImmersiveStyle();
 
-            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏（React 可能在脚本执行后重新渲染这些元素）
-            document.querySelectorAll('.AppHeader, .ColumnPageHeader, .Post-StickyBar, .Sticky, .BottomActions, .CornerButtons, .GlobalSideBar').forEach(el => {
-                el.style.display = 'none';
-                el.classList.add('zh-hidden-by-immersive');
-            });
+            // 强制隐藏知乎顶部/底部固定互动栏及侧边栏。
+            // 注意：这里只依赖 ensureImmersiveStyle() 注入的 #immersive-style 里的
+            // `display:none !important` 规则（见 CHROME_HIDE_SELECTORS），不再手动写 inline style。
+            // 若在此追加 inline display:none，React 重渲染会重置 className、抹掉手动添加的
+            // zh-hidden-by-immersive class，却保留 inline display:none，导致退出时按 class 的
+            // 恢复逻辑漏掉这些元素、顶部导航栏/搜索框残留隐藏（即“退出后搜索栏消失”的 bug）。
 
             createQuestionToolsPanel();
 

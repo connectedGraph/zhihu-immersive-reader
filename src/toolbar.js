@@ -104,6 +104,26 @@
         exitBtn.innerText = '退出沉浸';
         exitBtn.addEventListener('click', window.toggleImmersiveMode);
         document.body.appendChild(exitBtn);
+
+        // 回到顶部：悬浮右下角（工具面板上方），样式沿用复制 Markdown 按钮，尺寸等同侧边栏按钮
+        const backTopBtn = document.createElement('button');
+        backTopBtn.id = 'zh-back-top-btn';
+        backTopBtn.className = 'zh-back-top-btn';
+        backTopBtn.title = '回到顶部';
+        backTopBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+        backTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        document.body.appendChild(backTopBtn);
+
+        // 定位：与工具面板同列，放在面板正上方；等面板按钮弹入动画结束再校准一次
+        const placeBackTop = () => {
+            const panel = document.getElementById('zh-tools-panel');
+            const rect = panel ? panel.getBoundingClientRect() : null;
+            backTopBtn.style.bottom = (rect && rect.top > 0 ? Math.round(window.innerHeight - rect.top + 14) : 420) + 'px';
+        };
+        placeBackTop();
+        setTimeout(placeBackTop, 450);
     }
 
 
@@ -188,22 +208,20 @@
 function enterImmersive() {
         if (isHomePage()) {
             enterHomeImmersive();
-            return;
-        }
-        if (isFollowPage()) {
+        } else if (isFollowPage()) {
             enterFollowImmersive();
-            return;
-        }
-        if (isQuestionPage()) {
+        } else if (isQuestionPage()) {
             enterQuestionImmersive();
-            return;
-        }
-        if (isPostPage()) {
+        } else if (isPostPage()) {
             enterPostImmersive();
+        } else {
+            alert('阁下，此通用版目前只适配知乎首页、关注动态页 (/follow)、question 页面和 zhuanlan /p/ 页面。');
             return;
         }
-        alert('阁下，此通用版目前只适配知乎首页、关注动态页 (/follow)、question 页面和 zhuanlan /p/ 页面。');
+        // 进入淡入：由 #immersive-wrapper 的 CSS animation（zh-fade-in 0.25s）完成，与退出淡出对称。
     }
+
+
 
     function exitImmersive() {
         const wrapper = document.getElementById('immersive-wrapper');
@@ -267,7 +285,7 @@ function enterImmersive() {
         }
 
         // 2. 清理沉浸模式自己生成的壳子
-        ['immersive-wrapper', 'zh-tools-panel', 'immersive-style', 'immersive-exit-btn', 'zh-settings-modal', 'zh-help-modal', 'zh-radar-report-modal', 'zh-radar-book-modal'].forEach(id => {
+        ['immersive-wrapper', 'zh-tools-panel', 'immersive-style', 'immersive-exit-btn', 'zh-back-top-btn', 'zh-settings-modal', 'zh-help-modal', 'zh-radar-report-modal', 'zh-radar-book-modal'].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.remove();
         });
@@ -290,6 +308,15 @@ function enterImmersive() {
             child.style.display = child.dataset.origDisplay || '';
             child.classList.remove('zh-hidden-by-immersive');
             child.classList.remove('zh-hidden-by-immersive-inner');
+        });
+
+        // 防御兜底：React 重渲染可能重置 className、抹掉手动添加的 zh-hidden-by-immersive class，
+        // 导致上面的按 class 恢复漏掉 AppHeader 等顶部/固定栏元素；按 CHROME_HIDE_SELECTORS 显式清理。
+        CHROME_HIDE_SELECTORS.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+                el.style.display = '';
+                el.classList.remove('zh-hidden-by-immersive');
+            });
         });
 
         restoreQuestionAnswerPosition();

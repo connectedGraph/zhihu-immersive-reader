@@ -138,6 +138,21 @@ const DEFAULT_CONFIG = {
     translationContextParagraphs: 1
 };
 
+// 知乎顶部/底部固定栏与侧边栏选择器。
+// 与 styles.js 的 STYLE_CSS 中 `display:none !important` 隐藏规则保持一致：
+// 进入沉浸模式由该 CSS 负责隐藏，退出时删除 #immersive-style 即恢复；
+// toolbar.js 退出兜底也会按此列表显式清理可能残留的 inline display。
+const CHROME_HIDE_SELECTORS = [
+    '.AppHeader',
+    '.ColumnPageHeader',
+    '.Post-StickyBar',
+    '.Sticky',
+    '.BottomActions',
+    '.CornerButtons',
+    '.GlobalSideBar',
+    '.css-1nalqj2'
+];
+
 const EXPORT_HIDDEN_SELECTORS = [
     '.AppHeader',
     '.GlobalSideBar',
