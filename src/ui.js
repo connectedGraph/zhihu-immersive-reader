@@ -539,6 +539,7 @@ function S2translate(id, title, innerHTML) {
             autoSum: document.getElementById('zh-cfg-autosum').checked,
             autoTr: document.getElementById('zh-cfg-autotr').checked,
             autoHideImages: document.getElementById('zh-cfg-auto-hide-images').checked,
+            defaultEnterImmersive: document.getElementById('zh-cfg-default-enter-immersive').checked,
             imageMode: imageMode === 'collapse' ? 'collapse' : 'preview',
             shareExportFormat: ['html', 'svg', 'png', 'webp'].includes(shareFormat) ? shareFormat : 'svg',
             answerPreviewMode: document.getElementById('zh-cfg-answer-preview').value,
@@ -627,6 +628,7 @@ function S2translate(id, title, innerHTML) {
                 if (window._isImmersive) setupImageToggles();
                 if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
                 if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
+                if (window._isImmersive && isQuestionPage() && _questionState.view === 'list') renderQuestionList({ preserveScroll: true });
                 onDone?.();
                 showToast('设置已保存');
             } catch (e) {

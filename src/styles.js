@@ -33,11 +33,20 @@ const STYLE_CSS = `
     .zh-inline-btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border: 1px solid var(--zh-accent); border-radius: 4px; background: var(--zh-paper); color: var(--zh-accent); cursor: pointer; font-family: inherit; font-size: 14px; box-sizing: border-box; transition: all 0.15s ease; outline: none; }
     .zh-inline-btn:hover { background: var(--zh-accent); color: var(--zh-paper); }
     .zh-collect-status { margin: 24px 0; padding: 14px 18px; border-left: 4px solid var(--zh-accent); background: var(--zh-quote); color: var(--zh-text); }
-    .zh-answer-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
-    .zh-answer-list-item { border: 1px solid var(--zh-border); border-radius: 4px; padding: 14px 16px; background: rgba(255,255,255,0.18); cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease; }
-    .zh-answer-list-item:hover { border-color: var(--zh-accent); transform: translateY(-1px); }
-    .zh-answer-list-meta { color: var(--zh-accent); font-size: 0.9em; margin-bottom: 6px; }
-    .zh-answer-list-snippet { line-height: 1.7; }
+    /* 回答列表：与首页推荐流 .zh-home-grid / .zh-home-card 同构 */
+    .zh-answer-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 20px; animation: zh-page-enter 0.25s ease-out; }
+    .zh-answer-list.zh-answer-list-single { grid-template-columns: 1fr; max-width: 760px; margin-left: auto; margin-right: auto; }
+    .zh-answer-list-single .zh-answer-list-item { padding: 20px 24px; gap: 10px; }
+    .zh-answer-list-single .zh-answer-list-snippet { font-size: 15px; -webkit-line-clamp: 3; }
+    .zh-answer-list-item { border: 1px solid var(--zh-border); border-radius: 8px; padding: 16px 18px; background: var(--zh-paper); cursor: pointer; transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease; display: flex; flex-direction: column; gap: 8px; }
+    .zh-answer-list-item:hover { border-color: var(--zh-accent); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    .zh-answer-list-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--zh-accent); opacity: 0.85; flex-wrap: wrap; line-height: 1.4; margin: 0; }
+    .zh-answer-list-meta img { width: 20px; height: 20px; border-radius: 3px; object-fit: cover; flex-shrink: 0; }
+    .zh-answer-list-index { display: inline-block; font-size: 11px; padding: 1px 5px; border-radius: 3px; background: var(--zh-quote); color: var(--zh-accent); border: 1px solid var(--zh-border); white-space: nowrap; }
+    .zh-answer-list-snippet { font-size: 14px; color: var(--zh-text); opacity: 0.6; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+    .zh-answer-list-stats { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 0; flex-wrap: wrap; border-top: 1px solid var(--zh-border); color: var(--zh-text); opacity: .58; font-size: 11px; line-height: 1.4; }
+    .zh-answer-list-stats span + span::before { content: '·'; margin: 0 7px; opacity: .7; }
+    .zh-answer-list > .zh-feed-batch-divider { grid-column: 1 / -1; }
     .zh-home-title { margin: 0 0 14px !important; padding-bottom: 12px !important; border-bottom: 2px solid var(--zh-accent) !important; font-size: 26px !important; line-height: 1.4 !important; letter-spacing: 0 !important; }
 
     /* 首页/关注 切换头：H1 与开关同行，右上角 */
@@ -99,6 +108,10 @@ const STYLE_CSS = `
     .zh-toread-btn.zh-btn-active svg { fill: currentColor; }
 
     @media (max-width: 860px) { .zh-home-grid { grid-template-columns: 1fr; } #immersive-wrapper.zh-home-wide { max-width: none; padding: 24px 16px; } }
+
+    /* 问题回答列表：宽屏工作台布局，与 .zh-home-wide 对齐 */
+    #immersive-wrapper.zh-question-wide { max-width: 1200px; padding: 24px 48px 40px; margin-top: -30px; border-left: none !important; border-right: none !important; box-shadow: none; background: transparent !important; }
+    @media (max-width: 860px) { .zh-answer-list { grid-template-columns: 1fr; } #immersive-wrapper.zh-question-wide { max-width: none; padding: 24px 16px; } }
 
     /* 关注动态：推特式时间线 */
     #immersive-wrapper.zh-follow-wide { max-width: 640px; padding: 24px 0 60px; margin-top: -30px; border-left: none !important; border-right: none !important; box-shadow: none; background: transparent !important; }

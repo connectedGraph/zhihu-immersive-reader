@@ -386,7 +386,25 @@
                 break;
             }
         }
-        persistHomeFeedCache();
+        persistActiveFeedCacheAfterAction();
+    }
+
+    // 互动状态必须写回「当前上下文」对应的缓存。
+    // 原实现无条件调用 persistHomeFeedCache()：在关注页会把 _homeState 写进
+    // `${pathname}::topstory` 这个错 key。
+    // 问题页已改为每次重新采集、不落盘，互动状态只存活在当前会话的 _questionState 里，
+    // 因此这里直接跳过，不需要持久化。
+    function persistActiveFeedCacheAfterAction() {
+        try {
+            if (typeof isQuestionPage === 'function' && isQuestionPage()) return;
+            if (typeof isFollowPage === 'function' && isFollowPage()) {
+                persistFollowFeedCache();
+                return;
+            }
+            persistHomeFeedCache();
+        } catch (err) {
+            console.warn('知乎沉浸式阅读：互动状态持久化失败', err);
+        }
     }
 
     function refreshActionBar(bar, record) {

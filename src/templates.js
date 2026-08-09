@@ -30,13 +30,19 @@ const SETTINGS_MODAL_HTML = (cfg) => {
                         <p>控制推荐流、翻译、图片和列表预览。</p>
                     </header>
                     <div class="zh-settings-subsection">
-                        <h3>首页推荐浏览</h3>
-                        <div class="zh-segmented-control" role="radiogroup" aria-label="首页推荐浏览模式">
+                        <h3>首页推荐与问题回答浏览</h3>
+                        <div class="zh-segmented-control" role="radiogroup" aria-label="首页推荐与问题回答浏览模式">
                             <label><input type="radio" name="zh-home-feed-mode" value="paged" ${homeFeedMode === 'paged' ? 'checked' : ''}><span>分组翻页</span></label>
                             <label><input type="radio" name="zh-home-feed-mode" value="scroll" ${homeFeedMode === 'scroll' ? 'checked' : ''}><span>连续滚动</span></label>
                         </div>
-                        <p class="zh-settings-note zh-settings-note-compact">连续滚动仅在到达列表底部后开始累计；继续向下滚动约一个完整视口宽度，自动加载下一批 6 条内容。分组翻页使用独立的手动加载按钮。</p>
+                        <p class="zh-settings-note zh-settings-note-compact">首页推荐与问题回答共用此模式。连续滚动仅在到达列表底部后开始累计；继续向下滚动约一个完整视口宽度，自动加载下一批 6 条内容。分组翻页使用独立的手动加载按钮。</p>
                     </div>
+                    <div class="zh-settings-divider"></div>
+                    <div class="zh-settings-subsection"><h3>进入沉浸模式</h3></div>
+                    <div class="zh-settings-toggle-list">
+                        <label class="zh-settings-toggle"><span><b>默认进入沉浸模式</b><small>打开知乎页面时自动展卷，关闭后页面保持原样</small></span><input type="checkbox" id="zh-cfg-default-enter-immersive" ${cfg.defaultEnterImmersive !== false ? 'checked' : ''}><i></i></label>
+                    </div>
+                    <p class="zh-settings-note zh-settings-note-compact">关闭后仍可随时按 <b>Ctrl + E</b> 手动进入沉浸阅读。</p>
                     <div class="zh-settings-divider"></div>
                     <div class="zh-settings-subsection"><h3>阅读辅助</h3></div>
                     <div class="zh-settings-form-grid">

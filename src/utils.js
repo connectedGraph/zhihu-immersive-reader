@@ -51,14 +51,6 @@
         return match ? match[1] : location.origin + location.pathname.replace(/\/answer\/.*/, '');
     }
 
-    function getQuestionCacheKey() {
-        return `${getMainQuestionUrl().replace(/[#?].*$/, '')}::preview=${config.answerPreviewMode || 'excerpt'}`;
-    }
-
-    function getQuestionMainPageCacheKey() {
-        return `${location.origin}${location.pathname.replace(/\/answer\/.*/, '').replace(/[#?].*$/, '')}::preview=${config.answerPreviewMode || 'excerpt'}`;
-    }
-
     function getDocumentHeight() {
         return Math.max(
             document.body?.scrollHeight || 0,

@@ -1,42 +1,5 @@
-    function openQuestionCacheDB() {
-        return new Promise((resolve, reject) => {
-            if (!window.indexedDB) {
-                reject(new Error('当前环境不支持 IndexedDB'));
-                return;
-            }
-            const req = indexedDB.open(QUESTION_CACHE_DB, 1);
-            req.onupgradeneeded = () => {
-                const db = req.result;
-                if (!db.objectStoreNames.contains(QUESTION_CACHE_STORE)) {
-                    db.createObjectStore(QUESTION_CACHE_STORE, { keyPath: 'cacheKey' });
-                }
-            };
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-    }
-
-    async function getQuestionCacheRecord(cacheKey) {
-        const db = await openQuestionCacheDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(QUESTION_CACHE_STORE, 'readonly');
-            const req = tx.objectStore(QUESTION_CACHE_STORE).get(cacheKey);
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => reject(req.error);
-            tx.oncomplete = () => db.close();
-            tx.onerror = () => db.close();
-        });
-    }
-
-    async function putQuestionCacheRecord(record) {
-        const db = await openQuestionCacheDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(QUESTION_CACHE_STORE, 'readwrite');
-            tx.objectStore(QUESTION_CACHE_STORE).put(record);
-            tx.oncomplete = () => { db.close(); resolve(); };
-            tx.onerror = () => { db.close(); reject(tx.error); };
-        });
-    }
+    // 回答采集的 IndexedDB 缓存层已移除：回答列表改为每次进入重新走 API 采集。
+    // 旧实现会把 exhausted（已采集完）一起持久化，恢复后「继续加载」被永久关闭。
 
     function loadTranslationCache() {
         try {

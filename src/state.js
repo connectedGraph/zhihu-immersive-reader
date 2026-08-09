@@ -26,12 +26,9 @@
     let _articleSummary = "";
     let _adCleanupObserver = null;
     const _translationMemoryCache = new Map();
-    const _questionAnswerCache = new Map();
     const _homeFeedCache = new Map();
     const _followFeedCache = new Map();
     const _shareImageDataUrlCache = new Map();
-    const QUESTION_CACHE_DB = 'zh-immersive-question-cache';
-    const QUESTION_CACHE_STORE = 'questionAnswers';
     const WIKI_HISTORY_KEY = 'zh-immersive-wiki-history';
     const WIKI_HISTORY_MAX = 12;
     const HOME_BATCH_SIZE = 6;
@@ -83,6 +80,7 @@
                 if (window._isImmersive) setupImageToggles();
                 if (window._isImmersive && isHomePage() && _homeState.view === 'list') renderHomeList({ preserveScroll: true });
                 if (window._isImmersive && isFollowPage() && _followState.view === 'list') renderFollowList({ preserveScroll: true });
+                if (window._isImmersive && isQuestionPage() && _questionState.view === 'list') renderQuestionList({ preserveScroll: true });
             } catch (err) {
                 console.warn('知乎沉浸式阅读：同步配置失败', err);
             }
@@ -111,11 +109,15 @@
         originalScrollY: 0,
         exitScrollY: 0,
         currentIndex: 0,
+        listScrollY: 0,
+        batchCount: 0,
         reactRoot: null,
         view: '',
         collecting: false,
         loadingMore: false,
-        exhausted: false
+        exhausted: false,
+        apiNextUrl: '',
+        apiStarted: false
     };
 
     let _homeState = {

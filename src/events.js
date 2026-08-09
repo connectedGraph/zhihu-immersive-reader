@@ -93,6 +93,6 @@
     // 启动：仅在尚未配置收藏夹时后台尝试获取知乎默认收藏夹，不阻塞沉浸模式进入。
     autoInitializeDefaultCollection();
 
-    // 启动：非编辑页时自动进入沉浸模式
-    if (!isEditPage()) window.toggleImmersiveMode();
+    // 启动：非编辑页且允许默认进入沉浸模式时自动进入（设置页可关闭默认进入，仍可用 Ctrl+E 手动展卷）
+    if (!isEditPage() && config.defaultEnterImmersive !== false) window.toggleImmersiveMode();
 })();

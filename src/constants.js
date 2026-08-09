@@ -134,6 +134,7 @@ const DEFAULT_CONFIG = {
     customFontUrl: '',
     customFontName: '',
     homeFeedMode: 'scroll',
+    defaultEnterImmersive: true,
     translationPrompts: DEFAULT_TRANSLATION_PROMPTS.map(item => ({ ...item })),
     translationContextParagraphs: 1
 };
