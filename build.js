@@ -42,6 +42,7 @@ const modules = [
     'wiki-store.js',     // Wiki IndexedDB 存储
     'wiki.js',           // Wiki 功能
     'toolbar.js',        // 工具栏 & 沉浸模式进入/退出
+    'edit-guard.js',     // 编辑页沉浸模式与快捷键冲突保护
     'events.js',         // 键盘快捷键 & 右键菜单
 ];
 
