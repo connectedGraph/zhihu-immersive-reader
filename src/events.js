@@ -53,7 +53,8 @@
         }
 
         if (e.ctrlKey || e.metaKey) {
-            if (key === 'e') {
+            if (key === 'e' && !e.altKey) {
+                // 仅 Ctrl/Cmd+E 进入沉浸模式；Ctrl+Alt+E 是知乎编辑器插入公式的快捷键，必须放行
                 if (isEditPage()) return;
                 e.preventDefault();
                 window.toggleImmersiveMode();
